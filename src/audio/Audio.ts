@@ -1,12 +1,17 @@
 /**
  * Optional, muted-by-default procedural audio (Web Audio, no files):
- *   Ti lock click · Se hum scaled by spin · soft nib scratch · prompt chime.
+ *   Ti lock click · Se hum scaled by spin · nib scratch · prompt chime.
  * The AudioContext is only created when the user first unmutes.
+ *
+ * Levels: the hum sits well under the click (and ducks for it); the nib only
+ * makes a sound when it touches the paper (a dry groove scratches quietly, a
+ * burn crackles); writing with light (wash, heart) is a silent glide.
  */
 export class Audio {
   private ctx: AudioContext | null = null;
   private master!: GainNode;
   private humGain!: GainNode;
+  private humDuck!: GainNode;
   private humOsc: OscillatorNode[] = [];
   private humFilter!: BiquadFilterNode;
   private scratchGain!: GainNode;
@@ -30,7 +35,8 @@ export class Audio {
     this.humFilter.frequency.value = 300;
     this.humGain = ctx.createGain();
     this.humGain.gain.value = 0;
-    this.humFilter.connect(this.humGain).connect(this.master);
+    this.humDuck = ctx.createGain();
+    this.humFilter.connect(this.humGain).connect(this.humDuck).connect(this.master);
     for (const det of [-6, 7]) {
       const o = ctx.createOscillator();
       o.type = 'sawtooth';
@@ -79,6 +85,10 @@ export class Audio {
     const ctx = this.live;
     if (!ctx) return;
     const t = ctx.currentTime;
+    // Duck the hum so the click is never masked by a spinning Se.
+    this.humDuck.gain.cancelScheduledValues(t);
+    this.humDuck.gain.setValueAtTime(0.25, t);
+    this.humDuck.gain.linearRampToValueAtTime(1, t + 0.3);
     const src = ctx.createBufferSource();
     src.buffer = this.noise;
     const bp = ctx.createBiquadFilter();
@@ -86,10 +96,20 @@ export class Audio {
     bp.frequency.value = 3800;
     bp.Q.value = 3;
     const g = ctx.createGain();
-    g.gain.setValueAtTime(0.5, t);
+    g.gain.setValueAtTime(0.7, t);
     g.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
     src.connect(bp).connect(g).connect(this.master);
     src.start(t, Math.random(), 0.06);
+    // A short metallic tick well above the hum's band.
+    const tick = ctx.createOscillator();
+    tick.type = 'sine';
+    tick.frequency.value = 2650;
+    const tg = ctx.createGain();
+    tg.gain.setValueAtTime(0.12, t);
+    tg.gain.exponentialRampToValueAtTime(0.001, t + 0.045);
+    tick.connect(tg).connect(this.master);
+    tick.start(t);
+    tick.stop(t + 0.06);
     const o = ctx.createOscillator();
     o.type = 'triangle';
     o.frequency.setValueAtTime(180, t);
@@ -127,17 +147,21 @@ export class Audio {
   /**
    * Continuous layers, called every frame.
    * @param spin  Se normalised angular velocity
-   * @param nib   0..1 how hard the nib is writing
-   * @param tone  0 = dry scratch (high, thin), 1 = smooth glide (soft, low)
+   * @param nib   0..1 how hard the nib is pressing
+   * @param dry   0..1 how much of the stroke is a dry score (the ball dragging on paper)
+   * @param burn  0..1 how much of the stroke is a burn
    */
-  update(spin: number, nib: number, tone: number): void {
+  update(spin: number, nib: number, dry: number, burn: number): void {
     const ctx = this.ctx;
     if (!ctx) return;
     const t = ctx.currentTime;
-    this.humGain.gain.setTargetAtTime(0.05 * spin * spin + 0.012 * spin, t, 0.1);
+    this.humGain.gain.setTargetAtTime(0.04 * spin * spin + 0.01 * spin, t, 0.1);
     for (const o of this.humOsc) o.frequency.setTargetAtTime(48 + 70 * spin, t, 0.15);
-    this.humFilter.frequency.setTargetAtTime(180 + 900 * spin, t, 0.15);
-    this.scratchGain.gain.setTargetAtTime(nib * (0.06 + 0.05 * (1 - tone)), t, 0.04);
-    this.scratchFilter.frequency.setTargetAtTime(1200 + 3200 * (1 - tone), t, 0.05);
+    this.humFilter.frequency.setTargetAtTime(180 + 700 * spin, t, 0.15);
+    // A burn crackles: the level flickers frame to frame.
+    const crackle = burn * (0.3 + 0.7 * Math.random());
+    const contact = Math.min(1, dry + burn);
+    this.scratchGain.gain.setTargetAtTime(nib * (0.05 * dry + 0.035 * crackle), t, 0.03);
+    this.scratchFilter.frequency.setTargetAtTime(3400 - 1600 * (burn / Math.max(1e-3, contact)), t, 0.05);
   }
 }

@@ -432,7 +432,8 @@ export class App implements Controller {
     this.sheet.update(dt);
 
     const st = this.prompts.style;
-    this.audio.update(beam.T, ctx.drawing ? this.prompts.actuation * (0.3 + 0.7 * (st?.alpha ?? 0)) : 0, st ? 1 - st.inkTone * st.ink : 1);
+    const burn = st ? st.inkTone * Math.min(1, st.ink / 0.6) : 0;
+    this.audio.update(beam.T, ctx.drawing ? this.prompts.actuation : 0, st?.score ?? 0, burn);
 
     this.story.update(dt);
     this.ui.update(dt);
