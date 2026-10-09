@@ -7,6 +7,7 @@ import { CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { Audio } from './audio/Audio';
 import { Interaction } from './interaction';
 import { computeBeamState, INITIAL_BEAM_STATE, TI_LOCK } from './model/beam';
+import { strokeStyleFor } from './model/stroke';
 import { Beam } from './scene/Beam';
 import { CameraRig, HOME, type View } from './scene/CameraRig';
 import { buildEnvironment } from './scene/environment';
@@ -33,6 +34,9 @@ const FEED_RATE = 19;
 const KEY_FEED_RATE = 16;
 /** Unlocking needs a deliberate pull past the lock threshold (hysteresis). */
 const UNLOCK_AT = TI_LOCK - 0.06;
+/** Story page framing: aim a little toward the viewer so the page sits above the story bar. */
+const PAGE_AIM = new Vector3(0, 0.15, 0.55);
+const PAGE_OFFSET = new Vector3(0.9, 3.4, 3.9);
 
 /** The operations shared by the panel, the keyboard, the story and the scene. */
 export interface Controller {
@@ -47,6 +51,8 @@ export interface Controller {
   setMuted(muted: boolean): void;
   focus(id: InstrumentId | null): void;
   view(view: View, dur?: number): void;
+  /** A framing in which the mark being written is the subject, with the nib in frame. */
+  pageView(): View;
   startStory(): void;
   endStory(): void;
   setMode(mode: Mode): void;
@@ -171,6 +177,8 @@ export class App implements Controller {
 
   setCompile(on: boolean): void {
     this.store.controls.compile = on;
+    // The toggle is now the standing intent; a resting reticle stops driving it.
+    this.interaction.cancelDwell();
     this.bus.emit('ui');
   }
 
@@ -184,6 +192,7 @@ export class App implements Controller {
 
   reset(): void {
     this.store.controls = initialControls();
+    this.interaction.cancelDwell();
     this.store.torqueAccum = 0;
     this.store.beam = INITIAL_BEAM_STATE;
     this.ringShown = TI_RANGE;
@@ -237,6 +246,14 @@ export class App implements Controller {
 
   view(view: View, dur = 1.4): void {
     this.rig.flyTo(view, this.store.ui.reducedMotion ? 0.01 : dur);
+  }
+
+  pageView(): View {
+    const style = this.prompts.style ?? strokeStyleFor(this.store.beam);
+    const c = this.sheet.markCenter(style, { x: 0, y: 0 }) ?? this.store.controls.reticle;
+    // Lean toward the mark but keep the nib, upper left, in frame.
+    const t = sheetToWorld(c.x * 0.75 - 0.25, c.y * 0.75 - 0.15).add(PAGE_AIM);
+    return { target: t, position: t.clone().add(PAGE_OFFSET) };
   }
 
   startStory(): void {
@@ -413,6 +430,7 @@ export class App implements Controller {
       drawPoint: this.prompts.drawPoint,
       aimPoint: this.aimPoint,
       drawing: store.prompt.phase === 'drawing',
+      nibContact: this.prompts.style?.score ?? 0,
     };
     for (const ins of this.instruments) ins.update(ctx);
     this.beam.update(ctx, this.ti, this.ni, this.fe);

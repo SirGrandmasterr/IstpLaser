@@ -25,7 +25,8 @@ import {
   type Scene,
   type Texture,
 } from 'three';
-import { heartPoint, hashNoise, valueNoise } from '../model/heart';
+import { valueNoise } from '../model/heart';
+import { strokePath, type PathPoint } from '../model/path';
 import type { StrokeStyle } from '../model/stroke';
 import { RETICLE_LIMIT, SHEET_CENTER, SHEET_H, SHEET_W, sheetToWorld } from './layout';
 import { pointsMaterial } from './materials';
@@ -40,6 +41,15 @@ const FADE_STEP = 0.2;
 const FADE_ALPHA = 1 - Math.pow(0.02, FADE_STEP / 20);
 const MAX_SPARKS = 140;
 const TICKS = 28;
+/** Width of the groove a dry ball scores into the paper (glow-canvas pixels). */
+const SCORE_W = 6.5;
+
+function segment(ctx: CanvasRenderingContext2D, x0: number, y0: number, x1: number, y1: number): void {
+  ctx.beginPath();
+  ctx.moveTo(x0, y0);
+  ctx.lineTo(x1, y1);
+  ctx.stroke();
+}
 
 interface Spark {
   p: Vector3;
@@ -75,6 +85,8 @@ export class Sheet {
 
   private mark: Mark | null = null;
   private last: { x: number; y: number } | null = null;
+  private lastSeg = 0;
+  private pp: PathPoint = { x: 0, y: 0, seg: 0 };
   private sparkAcc = 0;
   private sparks: Spark[] = [];
   private sparkGeo = new BufferGeometry();
@@ -104,7 +116,7 @@ export class Sheet {
 
     const mat = new MeshStandardMaterial({
       map: paperTexture(),
-      color: new Color(0.8, 0.79, 0.77),
+      color: new Color(1.0, 0.95, 0.87),
       roughness: 0.92,
       metalness: 0,
       emissive: new Color(1, 1, 1),
@@ -122,7 +134,10 @@ export class Sheet {
            // Paper darkened by burns and scratches. The 8-bit fade toward white
            // stalls around 242/255, so that residue is mapped back to clean paper.
            vec3 markSample = texture2D(uMark, vEmissiveMapUv).rgb;
-           diffuseColor.rgb *= clamp(markSample / 0.945, 0.0, 1.0);`,
+           diffuseColor.rgb *= clamp(markSample / 0.945, 0.0, 1.0);
+           // The pool of light the page sits in: brightest at the middle, falling off to the corners.
+           float pool = smoothstep(1.05, 0.25, length((vEmissiveMapUv - 0.5) * vec2(2.0, 1.45)));
+           diffuseColor.rgb *= mix(0.58, 1.08, pool);`,
         )
         .replace(
           '#include <emissivemap_fragment>',
@@ -213,6 +228,7 @@ export class Sheet {
   begin(mark: Mark): void {
     this.mark = mark;
     this.last = null;
+    this.lastSeg = 0;
   }
 
   end(): void {
@@ -220,19 +236,25 @@ export class Sheet {
     this.last = null;
   }
 
+  /** Centre of the mark being written (sheet plane): thrown off-axis, but never entirely off the page. */
+  markCenter(style: StrokeStyle, out: { x: number; y: number }): { x: number; y: number } | null {
+    const mk = this.mark;
+    if (!mk) return null;
+    const off = style.offAxis * mk.scale * 1.7;
+    const mx = SHEET_W / 2 - 0.6 * mk.scale;
+    const my = SHEET_H / 2 - 0.6 * mk.scale;
+    out.x = Math.max(-mx, Math.min(mx, mk.cx + mk.ox * off));
+    out.y = Math.max(-my, Math.min(my, mk.cy + mk.oy * off));
+    return out;
+  }
+
   /** Sheet-plane point (metres) on the path at progress u, for the current style. */
   pathPoint(u: number, style: StrokeStyle, out: { x: number; y: number }): { x: number; y: number } {
     const mk = this.mark!;
-    const hp = heartPoint(u);
-    const j = style.jitter;
-    // Jagged scribble: a wobbling outline plus frame-to-frame zigzag.
-    const wob = 1 + 0.6 * j * valueNoise(u * 3, mk.seed);
-    const jag = j * mk.scale;
-    const zx = 0.55 * valueNoise(u * 26, mk.seed + 1) + 0.45 * hashNoise(this.frame * 1.37 + mk.seed);
-    const zy = 0.55 * valueNoise(u * 26, mk.seed + 2) + 0.45 * hashNoise(this.frame * 2.11 + mk.seed);
-    const off = style.offAxis * mk.scale * 1.7;
-    out.x = mk.cx + hp.x * mk.scale * wob + zx * jag + mk.ox * off;
-    out.y = mk.cy + hp.y * mk.scale * wob + zy * jag + mk.oy * off;
+    const p = strokePath(u, { jitter: style.jitter, scrawl: style.scrawl, seed: mk.seed, frame: this.frame }, this.pp);
+    const c = this.markCenter(style, out)!;
+    out.x = c.x + p.x * mk.scale;
+    out.y = c.y + p.y * mk.scale;
     return out;
   }
 
@@ -242,10 +264,14 @@ export class Sheet {
     this.frame++;
     const p = this.pathPoint(u, style, { x: 0, y: 0 });
     sheetToWorld(p.x, p.y, worldOut);
+    // A scrawl jumps: the nib lifts and lands somewhere else, so don't connect across.
+    if (this.pp.seg !== this.lastSeg) this.last = null;
+    this.lastSeg = this.pp.seg;
     const prev = this.last ?? p;
     const mk = this.mark;
 
-    const visible = valueNoise(u * 34, mk.seed + 3) > 1 - 2 * style.coverage;
+    // A dry nib skips more often, in shorter beats.
+    const visible = valueNoise(u * (34 + 40 * style.score), mk.seed + 3) > 1 - 2 * style.coverage;
     if (visible) this.paint(prev, p, style);
     this.last = p;
     this.dirty = Math.max(this.dirty, 1);
@@ -260,7 +286,8 @@ export class Sheet {
     const [r, g, b] = style.color;
     this.contact.position.copy(worldOut).setY(worldOut.y + 0.02);
     this.contact.material.color.setRGB(r, g, b);
-    this.contact.material.opacity = Math.min(1, style.alpha * (0.35 + style.glow)) * (visible ? 1 : 0.4);
+    // Light where the beam touches the paper; a dry nib brings none.
+    this.contact.material.opacity = Math.min(1, style.alpha * (0.2 + style.glow)) * (visible ? 1 : 0.4) * (1 - style.score);
     this.contact.scale.setScalar(0.25 + 0.6 * style.softness + 0.35 * style.glow);
     return worldOut;
   }
@@ -279,39 +306,54 @@ export class Sheet {
     g.lineCap = 'round';
     g.lineJoin = 'round';
 
-    // Crisp core.
-    const coreA = s.alpha * (1 - s.softness);
+    // How much of this is a burn (char that glows only at its edge) and how much
+    // a dry score (no light at all, just a groove pressed into the paper).
+    const burn = s.inkTone * Math.min(1, s.ink / 0.6);
+    const score = s.score;
+
+    // Crisp core of light.
+    const coreA = s.alpha * (1 - s.softness) * (1 - score) * (1 - 0.9 * burn);
     if (coreA > 0.01) {
       g.strokeStyle = `rgba(${rgb},${coreA.toFixed(3)})`;
       g.lineWidth = s.width;
-      g.beginPath();
-      g.moveTo(ax, ay);
-      g.lineTo(bx, by);
-      g.stroke();
+      segment(g, ax, ay, bx, by);
       if (s.glow > 0.4) {
         // Hot centre line, toward white.
         g.strokeStyle = `rgba(255,${150 + Math.round(40 * s.glow)},215,${(0.4 * s.glow * coreA).toFixed(3)})`;
         g.lineWidth = Math.max(1, s.width * 0.35);
-        g.beginPath();
-        g.moveTo(ax, ay);
-        g.lineTo(bx, by);
-        g.stroke();
+        segment(g, ax, ay, bx, by);
       }
     }
 
-    // A burn glows at its edges: embers around the char, whatever the energy.
-    if (s.inkTone > 0.3 && s.ink > 0.3) {
-      g.strokeStyle = `rgba(255,${Math.round(90 + 60 * Math.random())},30,${(0.35 * s.inkTone).toFixed(3)})`;
-      g.lineWidth = s.width * 2.6;
-      g.beginPath();
-      g.moveTo(ax, ay);
-      g.lineTo(bx, by);
-      g.stroke();
+    // A burn: embers glow along the edges of the char, hotter with more energy.
+    if (burn > 0.05) {
+      const heat = Math.min(1, 0.3 + 2 * s.glow);
+      g.strokeStyle = `rgba(255,${Math.round(80 + 70 * heat * Math.random())},18,${(0.85 * burn * heat).toFixed(3)})`;
+      g.lineWidth = s.width * 2.3;
+      segment(g, ax, ay, bx, by);
+      // The char itself gives off no light: cut the centre back to black.
+      g.globalCompositeOperation = 'source-over';
+      g.strokeStyle = `rgba(0,0,0,${(0.92 * burn).toFixed(3)})`;
+      g.lineWidth = s.width * 1.5;
+      segment(g, ax, ay, bx, by);
+      g.globalCompositeOperation = 'lighter';
+    }
+
+    // A score: the paper displaced by the ball rises as a faint burr on either side.
+    if (score > 0.05 && dist > 0.01) {
+      const nx = (-(by - ay) / dist) * (SCORE_W * 0.5 + 1.6);
+      const ny = ((bx - ax) / dist) * (SCORE_W * 0.5 + 1.6);
+      g.lineWidth = 1.6;
+      g.strokeStyle = `rgba(255,250,238,${(0.38 * score).toFixed(3)})`;
+      segment(g, ax + nx, ay + ny, bx + nx, by + ny);
+      g.strokeStyle = `rgba(255,250,238,${(0.18 * score).toFixed(3)})`;
+      segment(g, ax - nx, ay - ny, bx - nx, by - ny);
     }
 
     // Soft halo stamps; deposit is per unit length so the result is speed-independent.
     const rad = s.width * 1.5 + s.softness * s.width * 1.3 + s.glow * 16;
-    const deposit = s.alpha * (0.22 * s.glow + 3.2 * s.softness) * Math.min(1, Math.max(dist, 2) / (rad * 0.5));
+    const deposit =
+      s.alpha * (0.22 * s.glow + 3.2 * s.softness) * (1 - burn) * (1 - score) * Math.min(1, Math.max(dist, 2) / (rad * 0.5));
     if (deposit > 0.004) {
       // A soft wash converges on its colour (source-over) instead of adding up to white.
       g.globalCompositeOperation = s.softness > 0.5 ? 'source-over' : 'lighter';
@@ -328,28 +370,25 @@ export class Sheet {
       }
     }
 
-    // Ink: the paper itself, scorched or scratched.
+    // Ink: the paper itself, scorched or scored.
     if (s.ink > 0.02) {
       const m = this.m;
       const k = MW / GW;
       const tone = s.inkTone;
-      const r = Math.round(92 - 67 * tone);
-      const gg = Math.round(92 - 74 * tone);
-      const bb = Math.round(98 - 80 * tone);
       m.globalCompositeOperation = 'source-over';
       m.lineCap = 'round';
-      m.strokeStyle = `rgba(${r},${gg},${bb},${s.ink.toFixed(3)})`;
-      m.lineWidth = Math.max(1.3, s.width * (0.6 + 1.7 * tone) * k);
-      m.beginPath();
-      m.moveTo(ax * k, ay * k);
-      m.lineTo(bx * k, by * k);
-      m.stroke();
       if (tone > 0.3) {
-        // Scorched halo around the burn.
-        m.strokeStyle = `rgba(70,42,24,${(0.16 * s.ink * tone).toFixed(3)})`;
+        // Scorched halo around the burn, under the charcoal core.
+        m.strokeStyle = `rgba(62,36,20,${(0.38 * s.ink * tone).toFixed(3)})`;
         m.lineWidth = s.width * 5 * k;
-        m.stroke();
+        segment(m, ax * k, ay * k, bx * k, by * k);
       }
+      const r = Math.round(50 - 30 * tone);
+      const gg = Math.round(50 - 36 * tone);
+      const bb = Math.round(56 - 42 * tone);
+      m.strokeStyle = `rgba(${r},${gg},${bb},${s.ink.toFixed(3)})`;
+      m.lineWidth = Math.max(1.3, (SCORE_W * (1 - tone) + s.width * 1.6 * tone) * k);
+      segment(m, ax * k, ay * k, bx * k, by * k);
     }
   }
 

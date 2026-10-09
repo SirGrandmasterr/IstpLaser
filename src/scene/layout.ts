@@ -5,13 +5,13 @@
  */
 import { Quaternion, Vector3 } from 'three';
 
-export const SOURCE = new Vector3(-7.2, 6.4, 0);
+export const SOURCE = new Vector3(-7.2, 5.6, 0);
 export const DIR = new Vector3(1, -0.6, 0).normalize();
 
 export const T_TI = 2.7;
 export const T_SE = 5.4;
 export const T_NI = 7.5;
-export const T_FE = 9.6;
+export const T_FE = 9.75;
 
 export function axisPoint(t: number, out = new Vector3()): Vector3 {
   return out.copy(SOURCE).addScaledVector(DIR, t);
@@ -49,7 +49,7 @@ export function worldToSheet(p: Vector3): { x: number; y: number } {
 /** Margin so that a full-size heart stays on the paper. */
 export const RETICLE_LIMIT = { x: SHEET_W / 2 - 0.68, y: SHEET_H / 2 - 0.62 };
 
-export const CONSTRUCT_CENTER = new Vector3(-2.0, 2.3, 0);
+export const CONSTRUCT_CENTER = new Vector3(-1.9, 2.5, 0);
 
 /** Perpendicular to the beam in the vertical plane, pointing up and right: labels hang out here. */
 export const LABEL_SIDE = new Vector3(-DIR.y, DIR.x, 0);

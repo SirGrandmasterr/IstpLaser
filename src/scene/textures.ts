@@ -139,6 +139,20 @@ export function glowTexture(): Texture {
   return t;
 }
 
+/** Soft radial falloff for a pool of light on the floor. */
+export function poolTexture(): Texture {
+  const [c, ctx] = canvas(256, 256);
+  const g = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+  g.addColorStop(0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.45, 'rgba(255,255,255,0.45)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 256, 256);
+  const t = new CanvasTexture(c);
+  t.colorSpace = SRGBColorSpace;
+  return t;
+}
+
 /** Very dark floor with a soft pool of light under the construct. */
 export function floorTexture(): Texture {
   const [c, ctx] = canvas(512, 512);

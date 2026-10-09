@@ -38,6 +38,8 @@ export class Interaction {
   private down: { x: number; y: number; id: InstrumentId | null; t: number } | null = null;
   private ringDrag: { lastAngle: number; raw: number } | null = null;
   private reticleDrag = false;
+  /** Released and left alone: a resting reticle is "held still" and keeps compiling. */
+  private reticleDwell = false;
   private reticleMoved = 0;
   private reticleSpeed = 0;
   private stillFor = 0;
@@ -124,6 +126,7 @@ export class Interaction {
       this.claim(e, 'grabbing');
     } else if (p.sheet) {
       this.reticleDrag = true;
+      this.reticleDwell = false;
       this.stillFor = 0;
       this.moveReticle();
       this.claim(e, 'grabbing');
@@ -190,6 +193,12 @@ export class Interaction {
     if (Math.abs(raw) > 1e-4) c.tiSide = Math.sign(raw);
   }
 
+  /** The compile toggle or a reset takes over from a resting reticle. */
+  cancelDwell(): void {
+    this.reticleDwell = false;
+    if (!this.reticleDrag) this.store.controls.reticleDrive = null;
+  }
+
   /** Arrow keys while hovering Ti turn the ring by 5°. */
   nudgeRing(dir: number): void {
     const c = this.store.controls;
@@ -203,10 +212,9 @@ export class Interaction {
     this.down = null;
     const wasDragging = this.ringDrag || this.reticleDrag;
     if (this.reticleDrag) {
-      // On release, keep the direction if it was mostly compiled.
-      const c = this.store.controls;
-      c.compile = this.store.beam.intent > 0.5;
-      c.reticleDrive = null;
+      // Let go and leave it: a resting target counts as held still, so the
+      // direction goes on compiling (moving it again scatters it).
+      this.reticleDwell = true;
     }
     this.ringDrag = null;
     this.reticleDrag = false;
@@ -258,6 +266,11 @@ export class Interaction {
       if (moving) this.stillFor = 0;
       else this.stillFor += dt;
       c.reticleDrive = moving ? -1 : this.stillFor > 0.12 ? 1 : 0;
+    } else if (this.reticleDwell) {
+      this.reticleMoved = 0;
+      this.reticleSpeed = 0;
+      // Once compiled, the app switches the toggle on, which ends the dwell.
+      c.reticleDrive = 1;
     } else {
       this.reticleMoved = 0;
       this.reticleSpeed = 0;

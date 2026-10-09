@@ -35,27 +35,33 @@ export interface StrokeStyle {
   ink: number;
   /** Ink colour: 0 = grey scratch, 1 = charcoal burn. */
   inkTone: number;
+  /** How much a dry nib physically scores the paper (no light reaches it), 0..1. */
+  score: number;
+  /** How far the heart breaks up into a scrawl (see path.ts), 0..1. */
+  scrawl: number;
 }
 
 type Preset = Omit<StrokeStyle, 'color'> & { color: [number, number, number] };
 
 export const PRESETS: Record<keyof OutputWeights, Preset> = {
-  // Ti off: jagged, dark, off-axis burn with sparks.
+  // Ti off: jagged, dark, off-axis burn-scrawl with sparks. Char first, embers at the edge.
   scribble: {
     color: [0.95, 0.26, 0.06],
     alpha: 0.95,
-    width: 4,
-    softness: 0.1,
+    width: 5,
+    softness: 0,
     jitter: 0.32,
-    offAxis: 0.45,
+    offAxis: 0.7,
     sparks: 40,
     coverage: 1,
     glow: 0.35,
     duration: 2.2,
-    ink: 0.85,
+    ink: 0.92,
     inkTone: 1,
+    score: 0,
+    scrawl: 1,
   },
-  // Se starved: faint, dry, colourless scratch.
+  // Se starved: no light reaches the nib. It scores a dry, colourless, skipping groove.
   groove: {
     color: [0.62, 0.62, 0.64],
     alpha: 0.4,
@@ -64,11 +70,13 @@ export const PRESETS: Record<keyof OutputWeights, Preset> = {
     jitter: 0.03,
     offAxis: 0.05,
     sparks: 0,
-    coverage: 0.55,
+    coverage: 0.62,
     glow: 0.0,
     duration: 4.2,
-    ink: 0.7,
+    ink: 0.9,
     inkTone: 0,
+    score: 1,
+    scrawl: 0,
   },
   // Ni flat: washed-out pink puddle of light, no edges.
   puddle: {
@@ -84,6 +92,8 @@ export const PRESETS: Record<keyof OutputWeights, Preset> = {
     duration: 3.6,
     ink: 0,
     inkTone: 0,
+    score: 0,
+    scrawl: 0,
   },
   // All three: smooth, vibrant, glowing pink heart.
   heart: {
@@ -99,6 +109,8 @@ export const PRESETS: Record<keyof OutputWeights, Preset> = {
     duration: 3.4,
     ink: 0,
     inkTone: 0,
+    score: 0,
+    scrawl: 0,
   },
 };
 
@@ -147,6 +159,9 @@ export function strokeStyleFor(beam: BeamState): StrokeStyle {
     duration: blend(w, (p) => p.duration),
     ink: blend(w, (p) => p.ink),
     inkTone: w.scribble + w.groove > 1e-6 ? w.scribble / (w.scribble + w.groove) : 0,
+    score: blend(w, (p) => p.score),
+    // A nearly-locked Ti may still hint at the heart; a fully unaligned one never does.
+    scrawl: blend(w, (p) => p.scrawl) * (0.35 + 0.65 * (1 - beam.C)),
   };
 }
 

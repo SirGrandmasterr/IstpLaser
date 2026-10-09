@@ -21,6 +21,8 @@ export interface FrameContext {
   /** Where Ni is aiming (world, on the sheet). */
   aimPoint: Vector3;
   drawing: boolean;
+  /** How much the stroke being written is a dry score (no light arrives; the ball must touch the paper). */
+  nibContact: number;
 }
 
 export interface Instrument {

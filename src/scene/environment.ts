@@ -7,6 +7,7 @@ import {
   FogExp2,
   HemisphereLight,
   Mesh,
+  MeshBasicMaterial,
   MeshStandardMaterial,
   PMREMGenerator,
   SpotLight,
@@ -15,7 +16,7 @@ import {
 } from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { CONSTRUCT_CENTER, SHEET_CENTER } from './layout';
-import { floorTexture } from './textures';
+import { floorTexture, poolTexture } from './textures';
 
 export const BG = new Color(0x05060b);
 
@@ -48,10 +49,18 @@ export function buildEnvironment(scene: Scene, renderer: WebGLRenderer): void {
   scene.add(rim);
 
   // Soft pool of light on the paper.
-  const spot = new SpotLight(0xfff1e0, 4.5, 14, 0.42, 0.85, 1.4);
+  const spot = new SpotLight(0xfff1e0, 9, 14, 0.36, 0.85, 1.4);
   spot.position.set(SHEET_CENTER.x - 1.0, 7.5, SHEET_CENTER.z + 1.6);
   spot.target.position.copy(SHEET_CENTER);
   scene.add(spot, spot.target);
+  // …and the warm spill it leaves on the floor around the page.
+  const spill = new Mesh(
+    new CircleGeometry(4.2, 48),
+    new MeshBasicMaterial({ map: poolTexture(), color: 0xffe2c0, transparent: true, opacity: 0.1, depthWrite: false }),
+  );
+  spill.rotation.x = -Math.PI / 2;
+  spill.position.set(SHEET_CENTER.x - 0.2, 0.002, SHEET_CENTER.z + 0.2);
+  scene.add(spill);
 
   const floor = new Mesh(
     new CircleGeometry(40, 64),

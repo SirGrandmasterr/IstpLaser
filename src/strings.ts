@@ -15,7 +15,7 @@ export const S = {
   intro: {
     heading: 'The ISTP Ballpoint',
     body: [
-      'A laser is something you actually feel. It passes through four instruments, one for each of the ways an ISTP is said to process the world, and finally out of a tiny ballpoint nib onto a sheet of paper: other people.',
+      'The laser is what you actually feel: the raw impulse, before anything is done with it. It passes through four instruments, one for each of the ways an ISTP is said to process the world, and finally out of a tiny ballpoint nib onto a sheet of paper: other people.',
       'When all three upstream instruments are working at once, the nib draws a glowing heart. Take any one away and the mark goes wrong in its own way.',
     ],
     disclaimer:
@@ -75,7 +75,7 @@ export const S = {
     seHint: 'or move the pointer through the scene, scroll, or hold F',
     ni: 'Ni direction',
     niCompile: 'Compile',
-    niHint: 'or drag the target on the paper and hold it still',
+    niHint: 'or drop the target on the paper and let it rest a second',
     prompts: 'Someone reaches out',
     promptHint: 'Space repeats the last one',
     view: 'View',
@@ -118,7 +118,7 @@ export const S = {
     scenes: [
       'Ti turns the problem over, looping the beam inside itself.',
       'Ti hasn’t understood the shape of the situation. The beam hits Fe off-axis: a blunt, reactive remark.',
-      'Ti understands. But no fresh data reaches Se. The beam starves before it reaches the world. Ti and Ni loop on each other.',
+      'Ti understands. But no fresh data reaches Se. The beam starves before it reaches the world: nothing comes out. Ti and Ni loop on each other.',
       'Energy is back, but Ni has no compiled direction. Fe projects a vague pink wash.',
       'All three locked. Fe draws a heart: a feeling, communicated.',
       'Explore with the controls.',
@@ -158,7 +158,7 @@ export const S = {
         'A small lens that decides where the feeling is meant to go. Flat, it scatters the beam in every direction; primed, it telescopes into a barrel that points.',
         'In a conversation, Ni is knowing what you actually want to say to this person, and why.',
         'It can only extend when the beam from Ti is coherent, and it only stays extended while Se keeps the energy up. Without it, the feeling comes out as a vague, pleasant wash with no edges.',
-        'Drag the target on the paper and hold it still for a second.',
+        'Drag the target on the paper, then let it rest for a second. Moving it again scatters the direction.',
       ],
     },
     fe: {
@@ -190,7 +190,7 @@ export const S = {
       ['R', 'reset'],
       ['L', 'labels'],
       ['M', 'sound'],
-      ['← →', 'turn Ti ring (hover)'],
+      ['← →', 'turn Ti ring while hovering it (keyboard: use the slider)'],
       ['Esc', 'close card'],
     ] as [string, string][],
   },
