@@ -4,12 +4,14 @@ An interactive 3D explainer of the ISTP emotional pipeline. A laser (the raw imp
 
 > This is a *model* built on Jungian / MBTI typology, offered as a way of thinking, not as scientific fact. The app says so once, on the intro card.
 
+The guided story is about two named people (Phillip and Lucie unless you name them on the intro card): Act I shows the construct working, Act II breaks it stage by stage, and in Act III you repair it stage by stage with the real controls. The whole page is available in English and German.
+
 ## Run it
 
 ```bash
 npm install
 npm run dev       # http://localhost:5173
-npm test          # Vitest: beam, stroke, nib and path models; prompt and story sequencing
+npm test          # Vitest: beam, stroke, nib and path models; prompt and story sequencing; i18n
 npm run build     # type-check + static build into dist/
 npm run preview   # serve dist/ locally
 ```
@@ -35,17 +37,31 @@ The image is a two-stage build (Node 22 builds `dist/`, `nginx:alpine` serves it
 
 Append `?nowebgl` to the URL to see the WebGL-unsupported fallback.
 
+### Names and language in the URL
+
+A lecturer can link to a prepared version. Query values win over what the visitor saved; they are not written back unless the visitor changes them.
+
+```
+?lang=de&istp=Anna&istpPronoun=she&other=Jonas&otherPronoun=he
+```
+
+`lang` is `en` or `de` (first visit: the browser's language). Pronouns are `he`, `she` or `they`; in German, `they` uses the name instead of a pronoun.
+
+### Kurz auf Deutsch
+
+Starten: `npm install`, dann `npm run dev` und <http://localhost:5173> öffnen; `npm test` führt die Tests aus, `npm run build` baut die statische Seite nach `dist/`. Mit Docker: `docker compose up --build`, danach <http://localhost:8085>. Die Seite lässt sich mit dem Schalter „EN · DE“ (Startkarte oder Ansicht) oder mit `?lang=de` auf Deutsch umstellen; Namen und Pronomen stehen auf der Startkarte und unter „Namen“, siehe oben für vorbereitete Links.
+
 ## Controls
 
 Every condition can be changed in the scene and from the panel; both write to the same store.
 
 | | In the scene | Panel / keyboard |
 |---|---|---|
-| **Ti** alignment | Drag the knurled ring on the big lens so its bright notch meets the index mark (← → while hovering it) | Slider + **Lock** (`1`) |
+| **Ti** alignment | Drag the knurled ring on the big lens so its bright notch meets the index mark (← → while hovering it) | Slider + **Lock** (`1`); **Ask** (`Q`): each answer settles the next third; **Shatter** (`Shift+1`) |
 | **Se** input | Move the pointer through the scene, scroll, or hold `F` (any unbound letter) to throw particles at the ring | **Feed** (`2`), a steady stream for lectures |
 | **Ni** direction | Drag the target on the paper and let it rest for about a second: held or let go, a still target compiles; moving it scatters | **Compile** (`3`) |
 | Social prompts | — | Three buttons; `Space` repeats the last |
-| Other | Click an instrument (or its plate) to focus it and open its card | Story `S`, Reset `R`, Labels `L`, Sound `M`, `Esc` closes |
+| Other | Click an instrument (or its plate) to focus it and open its card | Story `S`, Reset `R`, Labels `L`, Sound `M`, `Esc` closes; **Names** and **EN · DE** in View |
 
 The ring's arrow keys only work while the pointer hovers it; keyboard-only users have the slider and **Lock**.
 
@@ -66,6 +82,8 @@ The first failure along the beam decides the character of the mark; later failur
 
 Because A, T and D are continuous, the mark degrades continuously in between.
 
+**Dormant** is the all-off row read as a state: Ti unlocked, Se starved and Ni without any direction (no intent, barrel flat). The HUD shows a *dormant* badge next to the Ti–Ni loop badge and the ambient light dims a little; it comes straight back when any of the three recovers.
+
 ## Metaphor → code
 
 | Metaphor | Code |
@@ -83,8 +101,9 @@ Because A, T and D are continuous, the mark degrades continuously in between.
 | The laser itself | [`src/scene/Beam.ts`](src/scene/Beam.ts): rebuilt per frame as instanced segments, coloured per stage |
 | The page (other people) | [`src/scene/Sheet.ts`](src/scene/Sheet.ts): a light canvas and an ink canvas; light fades over ~20 s, ink a little slower |
 | Someone reaches out | [`src/scene/Prompts.ts`](src/scene/Prompts.ts): orb → source → Fe actuation → drawing |
-| Story / UI / audio | [`src/story/Story.ts`](src/story/Story.ts), [`src/ui/UI.ts`](src/ui/UI.ts), [`src/audio/Audio.ts`](src/audio/Audio.ts); sequencing tested in [`Story.test.ts`](src/story/Story.test.ts) and [`Prompts.test.ts`](src/scene/Prompts.test.ts) |
-| All copy | [`src/strings.ts`](src/strings.ts) |
+| Words between Ti and the other person | [`src/scene/Messengers.ts`](src/scene/Messengers.ts): the story's line that shatters Ti, Ask's question and answer |
+| Story / UI / audio | [`src/story/Story.ts`](src/story/Story.ts), [`src/ui/UI.ts`](src/ui/UI.ts) (+ `StoryBar`, `PeopleForm`), [`src/audio/Audio.ts`](src/audio/Audio.ts); sequencing tested in [`Story.test.ts`](src/story/Story.test.ts) and [`Prompts.test.ts`](src/scene/Prompts.test.ts) |
+| All copy | [`src/i18n/en.ts`](src/i18n/en.ts) and [`src/i18n/de.ts`](src/i18n/de.ts), one shape ([`types.ts`](src/i18n/types.ts)); tokens and genitives in [`format.ts`](src/i18n/format.ts), names and prefs in [`people.ts`](src/i18n/people.ts), all tested in [`i18n.test.ts`](src/i18n/i18n.test.ts); [`src/strings.ts`](src/strings.ts) returns the active language with the names filled in |
 
 ### The beam model
 
@@ -137,14 +156,31 @@ Output weights (summing to 1) come from per-stage "pass" scores: `pTi = C³`, `p
 - **Typography** uses system grotesk/mono stacks; no web fonts are downloaded.
 - **three.js in its own chunk** (~600 kB), so a change to the app (~90 kB) doesn't re-download it. Vite 8 bundles with Rolldown, so this is `build.rolldownOptions.output.codeSplitting` rather than Rollup's `manualChunks`.
 - **No rendering until the canvas has a size.** A tab opened in the background can start at 0 × 0; the app waits for a real size rather than drawing into zero-size targets.
+- **Act II follows the beam model.** The Ti–Ni loop and the dry groove both need a locked Ti; with Ti unlocked every mark is a scribble. So after the shatter and the scribble, Ti re-sorts the pieces on its own ("a picture built without asking"): the feed stops, the beam dies in Ni, the loop appears and the nib scores the groove. Only then does that private picture slip (a gradual decay, not a second shatter), which leaves the pipeline dormant for Act III.
+- **Facets settle one by one.** Each facet has its own threshold (centre first, spread evenly), so a third of the alignment settles exactly a third of them, on small springs. A shatter throws them all back out with overshoot; with reduced motion it is a cut.
+- **Ask settles the next third**, so three answers lock Ti from nothing (fewer if the ring is already partway). Asks beyond what the answers in flight will lock are ignored, and the button is off while Ti is locked.
+- **Act III keeps what the user built.** Once Se is going in scene 7, the Feed toggle stays on (they stay close), so Ni can compile in scene 8 without the user feeding Se at the same time. "Do it for {istp}" also restores anything upstream that came undone, and if a step still isn't met 12 s later the story moves on anyway.
+- **Pointer input to Se is ignored until Act III**, so moving the mouse can't spin Se back up during the coast-down.
+- **German copy**, written as German: "du", no possessive pronouns (genitive names instead, `Felix’` with a typographic apostrophe), no accusative pronouns, and no sentence that starts with "sie"/"Sie". The panel stays 300 px wide; the German labels are short instead (*Neustart*, *Schilder*, *Zufuhr*, *Bündeln*).
 
 ## What was verified
+
+The story and German round (dev and production build, same browser pane; time advanced with `step()` while the pane was hidden):
+
+- A fresh profile asks for names; empty fields give Phillip and Lucie. Typed names and pronouns update the plates, prompt buttons, panel headings, cards and story at once, from the intro and from the panel. Typing a name never triggers a shortcut.
+- The English story end to end, by hand: the heart in Act I; the line flying into Ti and the shatter (flash, facets thrown out, disc rocking); the scribble; the coast-down, Ti re-locking alone, the beam dying in Ni and the loop arc; the dry groove; the slip into dormant (badge, dimmer light). In Act III: three asks with their questions, Se fed by moving the pointer, Ni compiled by dropping the target and letting it rest. Each step was acknowledged, the final heart landed on the target, and the sandbox followed with all three conditions met.
+- The German story end to end with "Für … übernehmen", read through for clumsy German, at 1440×900 and 820×1180 (drawer open and closed): nothing overflows or wraps in the panel, story bar, plates, HUD or intro, and the tablet drawer stacks above the story bar.
+- `?lang=de&istp=Anna&other=Jonas` opens in German with those names; with "neutral" chosen, the name stands in for the pronoun ("Jonas dankt Anna von Herzen").
+- Reduced motion: the shatter is a cut (checked in code paths: no pulse, no springs); the cue's pulse is removed by the reduced-motion stylesheet rule.
+- `npm test` (79 tests), `npm run build`, and no console errors or warnings in dev or in the production build (including the German `?nowebgl` fallback).
+
+The first build and the review follow-up:
 
 In a Chromium-based browser (the desktop app's browser pane, ANGLE/D3D11 on an RTX 3080). The pane was hidden for most of the session, so `requestAnimationFrame` didn't run. Visual checks advanced the simulation in fixed steps through the dev-only hooks in [`src/debug.ts`](src/debug.ts) and then took screenshots, rather than watching it live at 60 fps.
 
 - **The four marks, sheet view, labels off.** Scribble: a jagged scrawl in pieces, charcoal with a thin ember edge and sparks, no heart silhouette. Groove: a dashed, scored grey heart outline visible at a glance, with the nib dark and pressed onto the page while it writes. Wash: a soft pink haze with no edge. Heart: a crisp, glowing pink heart.
 - **No hardware where there is none.** Home view, all three conditions off, labels off: the Ti strays are short and sideways, every dim segment is a hairline, and nothing touches the floor. Also checked close up from the Ni framing.
-- **All six story scenes, end to end.** Each writing scene cuts to the page, the mark is the subject, the story holds on it, and only the story bar is shown. The Ti–Ni loop arc is visible in scene 3's first framing. The story ends in sandbox with Ti locked, Se fed and Ni primed.
+- **All six scenes of the earlier story, end to end.** Each writing scene cuts to the page, the mark is the subject, the story holds on it, and only the story bar is shown. The Ti–Ni loop arc is visible in scene 3's first framing. The story ends in sandbox with Ti locked, Se fed and Ni primed.
 - **Ni dwell with real pointer input.** Dragged the target with the mouse, let go and waited: the direction compiled in about a second and the Compile toggle switched on.
 - **Layouts.** 1440×900; 1024×768 with the card open (the focused instrument stays centred between card and panel at a 50° FOV); 820×1180 with the drawer open and closed (construct centred in the visible area, HUD top-right overlapping nothing, all plates visible).
 - **Plates.** Hover expands the role line; plates under the card or panel hide. Accessible names checked in the accessibility tree: every toggle, button and plate is named, and the gauges and authenticity readout are meters.

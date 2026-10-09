@@ -5,14 +5,16 @@
 import { ACESFilmicToneMapping, Scene, SRGBColorSpace, Vector3, WebGLRenderer } from 'three';
 import { Audio } from './audio/Audio';
 import { Interaction } from './interaction';
-import { computeBeamState, INITIAL_BEAM_STATE, TI_LOCK } from './model/beam';
+import { browserStorage, saveLang, savePeople } from './i18n/people';
+import { computeBeamState, deriveBeamState, INITIAL_BEAM_STATE, TI_LOCK } from './model/beam';
 import { strokeStyleFor } from './model/stroke';
 import { Beam } from './scene/Beam';
 import { CameraRig, HOME, type View } from './scene/CameraRig';
-import { buildEnvironment } from './scene/environment';
+import { buildEnvironment, type Ambience } from './scene/environment';
 import { setPointsPixelRatio } from './scene/materials';
 import { Fe } from './scene/Fe';
 import { sheetToWorld } from './scene/layout';
+import { Messengers } from './scene/Messengers';
 import { Ni } from './scene/Ni';
 import { Particles } from './scene/Particles';
 import { Post } from './scene/post';
@@ -24,7 +26,7 @@ import { Ti, TI_RANGE } from './scene/Ti';
 import type { FrameContext, Instrument } from './scene/types';
 import { Bus, createStore, initialControls, type Mode, type Store } from './state';
 import { Story } from './story/Story';
-import { S, type InstrumentId, type PromptKind } from './strings';
+import { configure, S, type InstrumentId, type Lang, type People, type PromptKind } from './strings';
 import { UI } from './ui/UI';
 
 /** Torque per particle hit; the steady feed rate keeps Se near full spin. */
@@ -37,10 +39,23 @@ const UNLOCK_AT = TI_LOCK - 0.06;
 const PAGE_AIM = new Vector3(0, 0.15, 0.55);
 const PAGE_OFFSET = new Vector3(1.1, 4.0, 4.6);
 
+/** Each answer settles Ti up to the next third: three answers lock it from nothing. */
+const nextThird = (a: number) => Math.min(1, (Math.floor(a * 3 + 1e-6) + 1) / 3);
+
 /** The operations shared by the panel, the keyboard, the story and the scene. */
 export interface Controller {
   setAlignment(v: number): void;
   setLock(on: boolean): void;
+  /** Ti's picture breaks at once: alignment to 0, latch and any animation cleared. */
+  shatter(): void;
+  /**
+   * One clarifying question: an orb goes out to the other person and an answer
+   * comes back into Ti, settling the next third. False if Ti is locked, or
+   * already will be once the answers in flight land.
+   */
+  ask(): boolean;
+  /** Questions still waiting for their answer. */
+  readonly asking: boolean;
   setFeed(on: boolean): void;
   setCompile(on: boolean): void;
   prompt(kind: PromptKind): void;
@@ -54,7 +69,15 @@ export interface Controller {
   pageView(): View;
   startStory(): void;
   endStory(): void;
+  /** The story's "Do it for {istp}". */
+  assistStory(): void;
+  /** Story: the companion's line flies into Ti (bus `lineArrive` when it lands). Only a visual. */
+  sendLine(): void;
+  /** Story: the construct straight into working order, no springs or clicks. */
+  setWorking(): void;
   setMode(mode: Mode): void;
+  setLanguage(lang: Lang): void;
+  setPeople(people: People): void;
   nudgeRing(dir: number): void;
   setKeyFeed(on: boolean): void;
   readonly hoveringTi: boolean;
@@ -77,6 +100,8 @@ export class App implements Controller {
   private sheet: Sheet;
   private particles: Particles;
   private prompts: Prompts;
+  private messengers: Messengers;
+  private ambience: Ambience;
   private interaction: Interaction;
   private audio = new Audio();
   private ui: UI;
@@ -90,7 +115,12 @@ export class App implements Controller {
   private keyFeed = false;
   private ringShown = TI_RANGE;
   private ringVel = 0;
+  /** Seconds the ring keeps springing after a shatter instead of following the hand. */
+  private ringFree = 0;
   private wasLocked = false;
+  private asksInFlight = 0;
+  /** 0..1, eased: how far the ambient light has dimmed for a dormant pipeline. */
+  private dormancy = 0;
   private aimPoint = new Vector3();
   private pixelRatio: number;
   private sized = false;
@@ -109,18 +139,19 @@ export class App implements Controller {
     this.renderer.toneMapping = ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.0;
     this.renderer.domElement.className = 'gl';
-    this.renderer.domElement.setAttribute('aria-label', S.a11y.scene);
+    this.renderer.domElement.setAttribute('aria-label', S().a11y.scene);
     this.renderer.domElement.setAttribute('role', 'img');
     root.appendChild(this.renderer.domElement);
 
     this.rig = new CameraRig(this.renderer.domElement);
-    buildEnvironment(this.scene, this.renderer);
+    this.ambience = buildEnvironment(this.scene, this.renderer);
     this.instruments = [this.source, this.ti, this.se, this.ni, this.fe];
     for (const ins of this.instruments) this.scene.add(ins.group);
     this.beam = new Beam(this.scene);
     this.sheet = new Sheet(this.scene, this.pixelRatio);
     this.particles = new Particles(this.scene, this.se, this.pixelRatio, reduced);
     this.prompts = new Prompts(this.scene, this.source, this.sheet, this.store, this.bus);
+    this.messengers = new Messengers(this.scene, this.source);
     this.post = new Post(this.renderer, this.scene, this.rig.camera);
 
     this.interaction = new Interaction(
@@ -134,7 +165,7 @@ export class App implements Controller {
       {
         focus: (id) => this.focus(id),
         activity: () => (this.store.idleTime = 0),
-        locked: () => this.store.ui.mode === 'story',
+        locked: () => this.store.ui.mode === 'story' && this.store.ui.storyAct < 3,
       },
     );
 
@@ -142,6 +173,8 @@ export class App implements Controller {
     this.story = new Story(this.store, this.bus, this, this.ui);
 
     this.bus.on('tiLock', () => this.audio.click());
+    this.bus.on('shatter', () => this.audio.crack());
+    this.bus.on('text', () => this.renderer.domElement.setAttribute('aria-label', S().a11y.scene));
     this.bus.on('ui', () => this.updateInsets());
     this.bus.on('promptArrive', () => this.audio.chime());
 
@@ -164,6 +197,43 @@ export class App implements Controller {
     c.alignmentTarget = on ? 1 : 0;
     if (!on) c.tiLatched = false;
     this.bus.emit('ui');
+  }
+
+  shatter(): void {
+    const c = this.store.controls;
+    c.alignment = 0;
+    c.alignmentTarget = null;
+    c.tiLatched = false;
+    const reduced = this.store.ui.reducedMotion;
+    this.ti.shatter(reduced);
+    // The ring jumps back off the mark; with reduced motion it just cuts there.
+    this.ringFree = reduced ? 0 : 1.2;
+    this.store.idleTime = 0;
+    this.bus.emit('shatter');
+    this.bus.emit('ui');
+  }
+
+  ask(): boolean {
+    const c = this.store.controls;
+    let level = c.tiLatched ? 1 : (c.alignmentTarget ?? c.alignment);
+    for (let i = 0; i < this.asksInFlight; i++) level = nextThird(level);
+    if (level >= TI_LOCK) return false;
+    this.asksInFlight++;
+    this.messengers.ask(() => {
+      this.asksInFlight = Math.max(0, this.asksInFlight - 1);
+      const k = this.store.controls;
+      // The answer settles the next third, animated like the lock toggle.
+      if (!k.tiLatched) k.alignmentTarget = nextThird(k.alignmentTarget ?? k.alignment);
+      this.bus.emit('answer');
+      this.bus.emit('ui');
+    });
+    this.store.idleTime = 0;
+    this.bus.emit('ask');
+    return true;
+  }
+
+  get asking(): boolean {
+    return this.asksInFlight > 0;
   }
 
   setFeed(on: boolean): void {
@@ -193,6 +263,9 @@ export class App implements Controller {
     this.store.beam = INITIAL_BEAM_STATE;
     this.ringShown = TI_RANGE;
     this.ringVel = 0;
+    this.ringFree = 0;
+    this.messengers.clear();
+    this.asksInFlight = 0;
     this.prompts.cancel();
     this.particles.clear();
     this.sheet.clear();
@@ -220,8 +293,10 @@ export class App implements Controller {
     const wide = w >= 1024;
     const cardEl = this.root.querySelector<HTMLElement>('.card');
     const card = wide && this.store.ui.focus !== null ? (cardEl?.offsetWidth ?? 340) + 32 : 0;
-    // On tablets the panel is a bottom drawer: lift the scene above it while it is open.
-    const drawer = !wide && this.store.ui.panelOpen ? (this.root.querySelector('.panel')?.clientHeight ?? 0) + 60 : 0;
+    // On tablets the panel is a bottom drawer: lift the scene above it while it is open
+    // (in the story the drawer sits on top of the story bar).
+    const storyBar = this.store.ui.mode === 'story' ? (this.root.querySelector<HTMLElement>('.story-bar')?.offsetHeight ?? 0) + 12 : 0;
+    const drawer = !wide && this.store.ui.panelOpen ? (this.root.querySelector('.panel')?.clientHeight ?? 0) + 60 + storyBar : 0;
     this.rig.setInsets(card, wide && this.store.ui.panelOpen ? 332 : 0, drawer);
   }
 
@@ -259,6 +334,42 @@ export class App implements Controller {
 
   endStory(): void {
     this.story.stop();
+  }
+
+  assistStory(): void {
+    this.story.assist();
+  }
+
+  sendLine(): void {
+    this.messengers.line(() => this.bus.emit('lineArrive'));
+  }
+
+  setWorking(): void {
+    const c = this.store.controls;
+    c.alignment = 1;
+    c.alignmentTarget = null;
+    c.tiLatched = true;
+    c.feed = true;
+    c.compile = true;
+    this.store.beam = deriveBeamState(1, 1, 1, 1);
+    this.wasLocked = true;
+    this.ringShown = 0;
+    this.ringVel = 0;
+    this.ti.snap(true);
+    this.ni.snap(1);
+    this.bus.emit('ui');
+  }
+
+  setLanguage(lang: Lang): void {
+    if (!configure({ lang })) return;
+    saveLang(browserStorage(), lang);
+    this.bus.emit('text');
+  }
+
+  setPeople(people: People): void {
+    if (!configure({ people })) return;
+    savePeople(browserStorage(), people);
+    this.bus.emit('text');
   }
 
   setMode(mode: Mode): void {
@@ -406,9 +517,11 @@ export class App implements Controller {
       this.wasLocked = beam.tiLocked;
     }
 
-    // Ring display: follows the hand, but snaps to the sweet spot with a spring when locked.
+    // Ring display: follows the hand, but snaps to the sweet spot with a spring when locked
+    // (and springs back off it for a moment after a shatter).
     const ringTarget = c.tiLatched ? 0 : c.tiSide * (1 - c.alignment) * TI_RANGE;
-    if (c.tiLatched || c.alignmentTarget !== null) {
+    this.ringFree = Math.max(0, this.ringFree - dt);
+    if (c.tiLatched || c.alignmentTarget !== null || this.ringFree > 0) {
       this.ringVel += (320 * (ringTarget - this.ringShown) - 16 * this.ringVel) * dt;
       this.ringShown += this.ringVel * dt;
     } else {
@@ -417,7 +530,13 @@ export class App implements Controller {
     }
 
     this.prompts.update(dt, beam);
+    this.messengers.update(dt);
     sheetToWorld(c.reticle.x, c.reticle.y, this.aimPoint);
+
+    // A dormant pipeline dims the ambient light a little; any improvement brings it straight back.
+    const dim = beam.dormant ? 1 : 0;
+    this.dormancy += (dim - this.dormancy) * Math.min(1, dt * (dim ? 1.2 : 5));
+    this.ambience.setDormancy(this.dormancy);
 
     const ctx: FrameContext = {
       time: this.time,

@@ -18,6 +18,8 @@
 export const TI_LOCK = 0.85;
 export const SE_STARVE = 0.25;
 export const NI_PRIMED = 0.6;
+/** Ni has no direction at all: no intent left, barrel flat. */
+export const NI_FLAT = 0.02;
 export const E_RESIDUAL = 0.06;
 
 /** Se friction: dT/dt = −(k·T + c). From full spin it halts in ≈ 3.8 s. */
@@ -71,6 +73,8 @@ export interface BeamState {
   niPrimed: boolean;
   /** Ni's ceiling right now, from Ti coherence × Se energy (0..1). */
   niGate: number;
+  /** Ti unlocked, Se starved and Ni without a direction, all at once. */
+  dormant: boolean;
   /** The first failure along the beam decides the character. */
   output: OutputMode;
   weights: OutputWeights;
@@ -133,6 +137,7 @@ export function deriveBeamState(A: number, T: number, intent: number, D: number)
   const tiLocked = A >= 1;
   const seStarved = T < SE_STARVE;
   const niPrimed = D >= NI_PRIMED;
+  const niFlat = intent <= NI_FLAT && D <= NI_FLAT;
   return {
     A,
     T,
@@ -146,6 +151,7 @@ export function deriveBeamState(A: number, T: number, intent: number, D: number)
     seStarved,
     niPrimed,
     niGate: C * seGate(T),
+    dormant: !tiLocked && seStarved && niFlat,
     output: classifyOutput(tiLocked, seStarved, niPrimed),
     weights: outputWeights(C, T, F),
   };

@@ -2,6 +2,10 @@
  * Ti: the kinematic kaleidoscope. A large disc of crystalline prisms on
  * micro-gimbals. Unaligned, the facets drift and tick like clockwork and trap
  * the beam; aligned, they snap into a rigid planar lock.
+ *
+ * Facets settle one by one as alignment rises, from the centre outward, each
+ * on its own little spring: at a third of the way, a third of them lie still.
+ * A shatter throws them all back out of lock at once.
  */
 import {
   BoxGeometry,
@@ -41,6 +45,13 @@ interface Facet {
   w1: number;
   w2: number;
   w3: number;
+  /** Alignment at which this facet settles (0..1, centre first). */
+  th: number;
+  /** Settle state: 0 free, 1 at rest in the plane; springs past both ends. */
+  s: number;
+  sv: number;
+  /** How hard a shatter throws this one. */
+  kick: number;
 }
 
 const _m = new Matrix4();
@@ -75,6 +86,7 @@ export class Ti implements Instrument {
   private amp = 1;
   private ampVel = 0;
   private lockPulse = 0;
+  private shatterPulse = 0;
   private wasLocked = false;
 
   constructor() {
@@ -136,9 +148,16 @@ export class Ti implements Instrument {
           w1: 0.6 + rnd() * 1.1,
           w2: 0.5 + rnd() * 1.2,
           w3: 0.35 + rnd() * 0.6,
+          th: (x * x + y * y) / (TI_FACET_RADIUS * TI_FACET_RADIUS) + 0.3 * rnd(),
+          s: 0,
+          sv: 0,
+          kick: rnd(),
         });
       }
     }
+    // Even thresholds by rank, so a third of the alignment settles exactly a third of the facets.
+    const order = [...this.facetData].sort((a, b) => a.th - b.th);
+    order.forEach((f, i) => (f.th = (i + 0.5) / order.length));
     this.facets = new InstancedMesh(geo, this.facetMat, this.facetData.length);
     this.facets.name = 'ti-facets';
     this.facets.frustumCulled = false;
@@ -158,12 +177,44 @@ export class Ti implements Instrument {
     return this.group.localToWorld(out);
   }
 
+  /**
+   * The picture breaks at once: every facet springs out of lock with some
+   * overshoot, the disc jolts and flashes. Reduced motion: a cut.
+   */
+  shatter(reducedMotion: boolean): void {
+    for (const f of this.facetData) {
+      f.s = reducedMotion ? 0 : Math.min(f.s, 1);
+      f.sv = reducedMotion ? 0 : -(3.5 + 4 * f.kick);
+    }
+    if (reducedMotion) {
+      this.amp = 1;
+      this.ampVel = 0;
+      return;
+    }
+    this.ampVel += 7;
+    this.shatterPulse = 1;
+    this.lockPulse = 0;
+  }
+
+  /** Jump straight to a state (no springs, no flash): the story opens on a working construct. */
+  snap(locked: boolean): void {
+    for (const f of this.facetData) {
+      f.s = locked ? 1 : 0;
+      f.sv = 0;
+    }
+    this.amp = locked ? 0 : 1;
+    this.ampVel = 0;
+    this.wasLocked = locked;
+    this.lockPulse = 0;
+    this.shatterPulse = 0;
+  }
+
   update(ctx: FrameContext): void {
     const { beam, dt, time } = ctx;
     const locked = beam.tiLocked;
 
-    // Facets gradually settle as alignment improves, then snap at the lock.
-    const target = locked ? 0 : 1 - 0.7 * smoothstep(0.15, 0.85, beam.A);
+    // The facets still free calm down a little as alignment improves; at the lock, all are still.
+    const target = locked ? 0 : 1 - 0.35 * smoothstep(0.15, 0.85, beam.A);
     const k = locked ? 260 : 40;
     const c = locked ? 9 : 11;
     this.ampVel += (k * (target - this.amp) - c * this.ampVel) * dt;
@@ -172,32 +223,48 @@ export class Ti implements Instrument {
     if (locked && !this.wasLocked) this.lockPulse = 1;
     this.wasLocked = locked;
     this.lockPulse = Math.max(0, this.lockPulse - dt * 2.2);
+    this.shatterPulse = Math.max(0, this.shatterPulse - dt * 1.8);
 
-    // Mechanical settle: a small jolt along the axis when it locks.
+    // Mechanical settle: a small jolt along the axis when it locks; a shatter rocks the whole disc.
     const jolt = this.lockPulse * this.lockPulse;
-    this.body.position.z = -0.05 * jolt * Math.cos((1 - this.lockPulse) * 22);
+    const rock = this.shatterPulse * this.shatterPulse;
+    const ph = 1 - this.shatterPulse;
+    this.body.position.z = -0.05 * jolt * Math.cos((1 - this.lockPulse) * 22) + 0.12 * rock * Math.cos(ph * 24);
+    this.body.rotation.x = 0.08 * rock * Math.sin(ph * 26);
+    this.body.rotation.y = 0.06 * rock * Math.sin(ph * 19 + 1);
 
     const amp = ctx.reducedMotion ? this.amp * 0.5 : this.amp;
     for (let i = 0; i < this.facetData.length; i++) {
       const f = this.facetData[i];
+      const goal = locked || beam.A > f.th ? 1 : 0;
+      if (ctx.reducedMotion) {
+        f.s += Math.sign(goal - f.s) * Math.min(Math.abs(goal - f.s), dt * 6);
+        f.sv = 0;
+      } else {
+        const k = locked ? 260 : 150;
+        f.sv += (k * (goal - f.s) - 10 * f.sv) * dt;
+        f.s += f.sv * dt;
+      }
+      const a = amp * (1 - Math.min(1, f.s));
       const tick = time * f.w3 + f.p3;
       const stepped = Math.floor(tick) + smoothstep(0, 0.25, tick - Math.floor(tick));
       _e.set(
-        amp * 0.75 * Math.sin(time * f.w1 + f.p1),
-        amp * 0.75 * Math.sin(time * f.w2 + f.p2),
-        (f.down ? Math.PI : 0) + amp * 0.8 * Math.sin(stepped * 1.7 + f.p1),
+        a * 0.75 * Math.sin(time * f.w1 + f.p1),
+        a * 0.75 * Math.sin(time * f.w2 + f.p2),
+        (f.down ? Math.PI : 0) + a * 0.8 * Math.sin(stepped * 1.7 + f.p1),
       );
       _q.setFromEuler(_e);
       _qBase.identity();
-      _p.set(f.x, f.y, amp * 0.07 * Math.sin(time * f.w2 * 1.3 + f.p3));
+      _p.set(f.x, f.y, a * 0.07 * Math.sin(time * f.w2 * 1.3 + f.p3));
       _m.compose(_p, _q.premultiply(_qBase), _s);
       this.facets.setMatrixAt(i, _m);
     }
     this.facets.instanceMatrix.needsUpdate = true;
 
-    // Trapped light makes an unaligned disc glow from inside; a lock flashes cyan.
+    // Trapped light makes an unaligned disc glow from inside; a lock flashes cyan, a shatter brighter and whiter.
     const trapped = (1 - beam.C) * 0.28;
-    this.facetMat.emissive.setRGB(0.12 * trapped + 0.25 * this.lockPulse, 0.35 * trapped + 0.6 * this.lockPulse, 0.9 * trapped + 0.9 * this.lockPulse);
+    const flash = this.lockPulse + 1.6 * rock;
+    this.facetMat.emissive.setRGB(0.12 * trapped + 0.25 * flash + 0.3 * rock, 0.35 * trapped + 0.6 * flash, 0.9 * trapped + 0.9 * flash);
     this.facetMat.opacity = 0.26 + 0.12 * beam.C;
 
     // Ring and notch.

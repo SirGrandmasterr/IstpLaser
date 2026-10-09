@@ -22,7 +22,7 @@ const MAX_POINTER_RATE = 36;
 export interface InteractionHooks {
   focus(id: InstrumentId): void;
   activity(): void;
-  /** Story mode locks the diegetic controls (camera still orbits). */
+  /** The story locks the diegetic controls and pointer input to Se until Act III (the camera still orbits). */
   locked(): boolean;
 }
 
@@ -229,12 +229,15 @@ export class Interaction {
 
   private onWheel = (): void => {
     this.hooks.activity();
+    if (this.hooks.locked()) return;
     for (let i = 0; i < 3; i++) this.particles.spawnAmbient();
   };
 
   /** Per-frame: spawn particles from pointer travel; derive Ni drive from the reticle. */
   update(dt: number): void {
     this.spawnBudget = Math.min(MAX_POINTER_RATE * 0.25, this.spawnBudget + MAX_POINTER_RATE * dt);
+    // While the story drives, moving the pointer around isn't input for Se.
+    if (this.hooks.locked()) this.travel = 0;
     if (this.pendingPointer && this.travel >= PX_PER_PARTICLE) {
       const r = this.dom.getBoundingClientRect();
       this.ndc.set(((this.pendingPointer.x - r.left) / r.width) * 2 - 1, -((this.pendingPointer.y - r.top) / r.height) * 2 + 1);

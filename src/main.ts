@@ -1,6 +1,11 @@
 import './styles.css';
 import { App } from './app';
-import { S } from './strings';
+import { browserStorage, loadPrefs } from './i18n/people';
+import { configure, S, syncDocument } from './strings';
+
+// Language and names first: even the WebGL fallback is shown in the right language.
+configure(loadPrefs(location.search, browserStorage(), navigator.language));
+syncDocument();
 
 function webglAvailable(): boolean {
   // `?nowebgl` forces the fallback so it can be checked on any machine.
@@ -17,9 +22,9 @@ function fallback(root: HTMLElement): void {
   const box = document.createElement('div');
   box.className = 'fallback';
   const h = document.createElement('h1');
-  h.textContent = S.noWebGL.heading;
+  h.textContent = S().noWebGL.heading;
   const p = document.createElement('p');
-  p.textContent = S.noWebGL.body;
+  p.textContent = S().noWebGL.body;
   box.append(h, p);
   root.append(box);
 }

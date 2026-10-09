@@ -111,6 +111,12 @@ export class Ni implements Instrument {
     return this.hazeAmount;
   }
 
+  /** Jump to an extension without the spring (the story opens on a working construct). */
+  snap(extension: number): void {
+    this.extension = extension;
+    this.extVel = 0;
+  }
+
   update(ctx: FrameContext): void {
     // A mechanical ease with slight overshoot (≈1.5 s), following the model's D.
     const k = ctx.reducedMotion ? 30 : 22;

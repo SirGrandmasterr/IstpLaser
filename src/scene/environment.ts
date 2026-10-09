@@ -1,4 +1,7 @@
-/** Deep-space stage: fog, a soft procedural environment map, dim lights and a dark floor. */
+/**
+ * Deep-space stage: fog, a soft procedural environment map, dim lights and a dark floor.
+ * The ambient part dims a little while the pipeline is dormant.
+ */
 import {
   AmbientLight,
   CircleGeometry,
@@ -20,7 +23,14 @@ import { floorTexture, poolTexture } from './textures';
 
 export const BG = new Color(0x05060b);
 
-export function buildEnvironment(scene: Scene, renderer: WebGLRenderer): void {
+export interface Ambience {
+  /** 0 = normal, 1 = dormant: the construct's ambient glow dims slightly. */
+  setDormancy(k: number): void;
+}
+
+const ENV_INTENSITY = 0.32;
+
+export function buildEnvironment(scene: Scene, renderer: WebGLRenderer): Ambience {
   scene.background = BG;
   scene.fog = new FogExp2(BG.getHex(), 0.028);
 
@@ -34,10 +44,11 @@ export function buildEnvironment(scene: Scene, renderer: WebGLRenderer): void {
   pmrem.dispose();
   renderer.debug.checkShaderErrors = check;
   scene.environment = env;
-  scene.environmentIntensity = 0.32;
+  scene.environmentIntensity = ENV_INTENSITY;
 
-  scene.add(new AmbientLight(0x1a2030, 0.6));
-  scene.add(new HemisphereLight(0x5a6c99, 0x0a0806, 0.35));
+  const ambient = new AmbientLight(0x1a2030, 0.6);
+  const hemi = new HemisphereLight(0x5a6c99, 0x0a0806, 0.35);
+  scene.add(ambient, hemi);
 
   // A cool key light to pick out machined edges.
   const key = new DirectionalLight(0xb9cdf5, 1.1);
@@ -71,4 +82,12 @@ export function buildEnvironment(scene: Scene, renderer: WebGLRenderer): void {
   floor.scale.setScalar(1);
   floor.name = 'floor';
   scene.add(floor);
+
+  return {
+    setDormancy(k: number): void {
+      scene.environmentIntensity = ENV_INTENSITY * (1 - 0.4 * k);
+      ambient.intensity = 0.6 * (1 - 0.45 * k);
+      hemi.intensity = 0.35 * (1 - 0.45 * k);
+    },
+  };
 }

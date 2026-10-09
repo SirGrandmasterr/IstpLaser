@@ -45,6 +45,8 @@ export interface UIState {
   focus: InstrumentId | null;
   reducedMotion: boolean;
   panelOpen: boolean;
+  /** The story's current act (1–3), 0 outside the story. Act III hands the controls to the user. */
+  storyAct: number;
 }
 
 export interface Store {
@@ -77,7 +79,7 @@ export function createStore(reducedMotion: boolean): Store {
     torqueAccum: 0,
     beam: INITIAL_BEAM_STATE,
     prompt: { phase: 'none', kind: null, last: 'okay', t: 0, progress: 0 },
-    ui: { mode: 'intro', labels: true, muted: true, focus: null, reducedMotion, panelOpen: true },
+    ui: { mode: 'intro', labels: true, muted: true, focus: null, reducedMotion, panelOpen: true, storyAct: 0 },
     idleTime: 0,
   };
 }
@@ -87,6 +89,13 @@ type Listener<T> = (payload: T) => void;
 export interface Events {
   tiLock: void;
   tiUnlock: void;
+  /** Ti's picture broke at once. */
+  shatter: void;
+  /** A question left for the other person; its answer lands in Ti later. */
+  ask: void;
+  answer: void;
+  /** The story's line reached Ti. */
+  lineArrive: void;
   seHit: void;
   promptStart: PromptKind;
   promptArrive: PromptKind;
@@ -96,6 +105,8 @@ export interface Events {
   mode: Mode;
   ui: void;
   reset: void;
+  /** Language or names changed: re-read every string. */
+  text: void;
 }
 
 /** Tiny typed event bus for one-off moments (sounds, snaps, captions). */

@@ -1,6 +1,6 @@
 /**
  * Optional, muted-by-default procedural audio (Web Audio, no files):
- *   Ti lock click · Se hum scaled by spin · nib scratch · prompt chime.
+ *   Ti lock click · Ti shatter crack · Se hum scaled by spin · nib scratch · prompt chime.
  * The AudioContext is only created when the user first unmutes.
  *
  * Levels: the hum sits well under the click (and ducks for it); the nib only
@@ -120,6 +120,44 @@ export class Audio {
     o.connect(og).connect(this.master);
     o.start(t);
     o.stop(t + 0.14);
+  }
+
+  /** Ti's picture breaking: a dry glassy crack, the lock's thunk run backwards (rising). */
+  crack(): void {
+    const ctx = this.live;
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    this.humDuck.gain.cancelScheduledValues(t);
+    this.humDuck.gain.setValueAtTime(0.2, t);
+    this.humDuck.gain.linearRampToValueAtTime(1, t + 0.5);
+    // Two splintering bursts of bright noise, a few ms apart.
+    for (const [delay, level, f] of [
+      [0, 0.8, 5200],
+      [0.035, 0.45, 3600],
+    ] as const) {
+      const src = ctx.createBufferSource();
+      src.buffer = this.noise;
+      const hp = ctx.createBiquadFilter();
+      hp.type = 'highpass';
+      hp.frequency.value = f;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(level, t + delay);
+      g.gain.exponentialRampToValueAtTime(0.001, t + delay + 0.16);
+      src.connect(hp).connect(g).connect(this.master);
+      src.start(t + delay, Math.random(), 0.2);
+    }
+    // The click's low thunk, reversed: it swells and rises instead of dropping.
+    const o = ctx.createOscillator();
+    o.type = 'triangle';
+    o.frequency.setValueAtTime(70, t);
+    o.frequency.exponentialRampToValueAtTime(190, t + 0.12);
+    const og = ctx.createGain();
+    og.gain.setValueAtTime(0.001, t);
+    og.gain.exponentialRampToValueAtTime(0.3, t + 0.1);
+    og.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
+    o.connect(og).connect(this.master);
+    o.start(t);
+    o.stop(t + 0.18);
   }
 
   /** Soft two-note chime as a prompt reaches the source. */
