@@ -35,7 +35,7 @@ const KEY_FEED_RATE = 16;
 const UNLOCK_AT = TI_LOCK - 0.06;
 /** Story page framing: aim a little toward the viewer so the page sits above the story bar. */
 const PAGE_AIM = new Vector3(0, 0.15, 0.55);
-const PAGE_OFFSET = new Vector3(0.9, 3.4, 3.9);
+const PAGE_OFFSET = new Vector3(1.1, 4.0, 4.6);
 
 /** The operations shared by the panel, the keyboard, the story and the scene. */
 export interface Controller {

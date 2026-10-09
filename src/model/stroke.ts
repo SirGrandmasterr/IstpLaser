@@ -48,7 +48,7 @@ export const PRESETS: Record<keyof OutputWeights, Preset> = {
   scribble: {
     color: [0.95, 0.26, 0.06],
     alpha: 0.95,
-    width: 5,
+    width: 7,
     softness: 0,
     jitter: 0.32,
     offAxis: 0.7,
@@ -78,10 +78,11 @@ export const PRESETS: Record<keyof OutputWeights, Preset> = {
     score: 1,
     scrawl: 0,
   },
-  // Ni flat: washed-out pink puddle of light, no edges.
+  // Ni flat: washed-out pink puddle of light, no edges. (Saturated and low: added
+  // to near-white paper, a paler pink would just read as white.)
   puddle: {
-    color: [1.0, 0.6, 0.8],
-    alpha: 0.38,
+    color: [1.0, 0.36, 0.66],
+    alpha: 0.3,
     width: 36,
     softness: 1.0,
     jitter: 0.08,

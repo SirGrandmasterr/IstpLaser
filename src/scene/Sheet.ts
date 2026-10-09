@@ -36,9 +36,11 @@ const GW = 1024;
 const GH = Math.round(GW / Math.SQRT2);
 const MW = 512;
 const MH = Math.round(MW / Math.SQRT2);
-/** Fade so that a mark is ~2% after 20 s, applied in steps (8-bit canvases). */
+/** Fade so that light is ~2% after 20 s, applied in steps (8-bit canvases). */
 const FADE_STEP = 0.2;
 const FADE_ALPHA = 1 - Math.pow(0.02, FADE_STEP / 20);
+/** What the nib did to the paper outlasts its light: char and scores keep ~8% after 20 s. */
+const MARK_FADE_ALPHA = 1 - Math.pow(0.08, FADE_STEP / 20);
 const MAX_SPARKS = 140;
 const TICKS = 28;
 /** Width of the groove a dry ball scores into the paper (glow-canvas pixels). */
@@ -132,9 +134,9 @@ export class Sheet {
           '#include <map_fragment>',
           `#include <map_fragment>
            // Paper darkened by burns and scratches. The 8-bit fade toward white
-           // stalls around 242/255, so that residue is mapped back to clean paper.
+           // stalls at 235/255 (0.92), so that residue is mapped back to clean paper.
            vec3 markSample = texture2D(uMark, vEmissiveMapUv).rgb;
-           diffuseColor.rgb *= clamp(markSample / 0.945, 0.0, 1.0);
+           diffuseColor.rgb *= clamp(markSample / 0.915, 0.0, 1.0);
            // The pool of light the page sits in: brightest at the middle, falling off to the corners.
            float pool = smoothstep(1.05, 0.25, length((vEmissiveMapUv - 0.5) * vec2(2.0, 1.45)));
            diffuseColor.rgb *= mix(0.58, 1.08, pool);`,
@@ -318,8 +320,8 @@ export class Sheet {
       g.lineWidth = s.width;
       segment(g, ax, ay, bx, by);
       if (s.glow > 0.4) {
-        // Hot centre line, toward white.
-        g.strokeStyle = `rgba(255,${150 + Math.round(40 * s.glow)},215,${(0.4 * s.glow * coreA).toFixed(3)})`;
+        // Hot centre line: brighter, but still pink rather than white.
+        g.strokeStyle = `rgba(255,${105 + Math.round(30 * s.glow)},200,${(0.35 * s.glow * coreA).toFixed(3)})`;
         g.lineWidth = Math.max(1, s.width * 0.35);
         segment(g, ax, ay, bx, by);
       }
@@ -334,7 +336,7 @@ export class Sheet {
       // The char itself gives off no light: cut the centre back to black.
       g.globalCompositeOperation = 'source-over';
       g.strokeStyle = `rgba(0,0,0,${(0.92 * burn).toFixed(3)})`;
-      g.lineWidth = s.width * 1.5;
+      g.lineWidth = s.width * 1.8;
       segment(g, ax, ay, bx, by);
       g.globalCompositeOperation = 'lighter';
     }
@@ -370,6 +372,22 @@ export class Sheet {
       }
     }
 
+    // Where crisp light lands, it stains the page faintly in its own colour, so the
+    // glow reads as pink on light paper instead of blooming to white.
+    const stain = coreA * Math.max(0, s.glow - 0.3);
+    if (stain > 0.02) {
+      const m = this.m;
+      const k = MW / GW;
+      m.globalCompositeOperation = 'multiply';
+      m.lineCap = 'round';
+      const sg = Math.round(255 * (0.3 + 0.7 * s.color[1]));
+      const sb = Math.round(255 * (0.5 + 0.5 * s.color[2]));
+      m.strokeStyle = `rgba(255,${sg},${sb},${(0.85 * stain).toFixed(3)})`;
+      m.lineWidth = Math.max(1.5, s.width * 1.5 * k);
+      segment(m, ax * k, ay * k, bx * k, by * k);
+      m.globalCompositeOperation = 'source-over';
+    }
+
     // Ink: the paper itself, scorched or scored.
     if (s.ink > 0.02) {
       const m = this.m;
@@ -379,15 +397,15 @@ export class Sheet {
       m.lineCap = 'round';
       if (tone > 0.3) {
         // Scorched halo around the burn, under the charcoal core.
-        m.strokeStyle = `rgba(62,36,20,${(0.38 * s.ink * tone).toFixed(3)})`;
-        m.lineWidth = s.width * 5 * k;
+        m.strokeStyle = `rgba(62,36,20,${(0.3 * s.ink * tone).toFixed(3)})`;
+        m.lineWidth = s.width * 3.6 * k;
         segment(m, ax * k, ay * k, bx * k, by * k);
       }
       const r = Math.round(50 - 30 * tone);
       const gg = Math.round(50 - 36 * tone);
       const bb = Math.round(56 - 42 * tone);
       m.strokeStyle = `rgba(${r},${gg},${bb},${s.ink.toFixed(3)})`;
-      m.lineWidth = Math.max(1.3, (SCORE_W * (1 - tone) + s.width * 1.6 * tone) * k);
+      m.lineWidth = Math.max(1.3, (SCORE_W * (1 - tone) + s.width * 1.9 * tone) * k);
       segment(m, ax * k, ay * k, bx * k, by * k);
     }
   }
@@ -413,7 +431,7 @@ export class Sheet {
       this.g.fillStyle = `rgba(0,0,0,${FADE_ALPHA})`;
       this.g.fillRect(0, 0, GW, GH);
       this.m.globalCompositeOperation = 'source-over';
-      this.m.fillStyle = `rgba(255,255,255,${FADE_ALPHA})`;
+      this.m.fillStyle = `rgba(255,255,255,${MARK_FADE_ALPHA})`;
       this.m.fillRect(0, 0, MW, MH);
       this.dirty = 2;
     }

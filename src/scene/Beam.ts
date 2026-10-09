@@ -298,9 +298,11 @@ export class Beam {
       }
     }
 
-    // 6. Ni → galvo mirrors → ball: rose. An unfocused beam arrives wide and soft.
-    const I3 = I2 * survive * (0.35 + 0.4 * beam.F);
-    const r3 = 0.016 * (1 + 2.2 * unfocused * C);
+    // 6. Ni → galvo mirrors → ball: rose. An unfocused beam arrives wide and soft:
+    //    the same light spread wider, so dimmer, and it never glares over the page.
+    const spread = 1 + 2.2 * unfocused * C;
+    const r3 = 0.016 * spread;
+    const I3 = (I2 * survive * (0.35 + 0.4 * beam.F)) / Math.pow(spread, 0.8);
     fe.galvoWorld(0, this.g1);
     fe.galvoWorld(1, this.g2);
     fe.ballWorld(this.ball);
