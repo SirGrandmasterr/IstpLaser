@@ -93,6 +93,7 @@ export class App implements Controller {
   private wasLocked = false;
   private aimPoint = new Vector3();
   private pixelRatio: number;
+  private sized = false;
   /** Resolution governor: average frame time over a window, step DPR down if slow. */
   private perf = { acc: 0, frames: 0, cooldown: 3 };
 
@@ -303,14 +304,18 @@ export class App implements Controller {
   };
 
   private resize = (fromWindow: boolean | UIEvent = true): void => {
+    const w = this.root.clientWidth;
+    const h = this.root.clientHeight;
+    // A tab opened in the background can start at 0 × 0: sizing render targets to
+    // zero (and drawing into them) floods the console. Wait for a real size.
+    this.sized = w >= 2 && h >= 2;
+    if (!this.sized) return;
     if (fromWindow !== false) {
       this.pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
       this.renderer.setPixelRatio(this.pixelRatio);
       this.perf.cooldown = 3;
     }
     setPointsPixelRatio(this.pixelRatio);
-    const w = this.root.clientWidth;
-    const h = this.root.clientHeight;
     this.renderer.setSize(w, h);
     this.post.setSize(w, h, this.pixelRatio);
     this.rig.resize(w, h);
@@ -441,7 +446,7 @@ export class App implements Controller {
     const allowDrift = !store.ui.reducedMotion && store.ui.mode !== 'story' && store.ui.focus === null;
     this.rig.update(dt, store.idleTime, allowDrift);
 
-    if (!render) return;
+    if (!render || !this.sized) return;
     this.post.render(this.time, store.ui.reducedMotion);
     this.ui.placeLabels();
   }
