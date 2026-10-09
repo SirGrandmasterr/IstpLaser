@@ -3,8 +3,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Controller } from '../app';
 import { deriveBeamState } from '../model/beam';
 import type { View } from '../scene/CameraRig';
+import { LINE_FLIGHT } from '../scene/Messengers';
 import { Bus, createStore, type Mode, type Store } from '../state';
-import { ASSIST_TIMEOUT, HOLD, scenes, Story, type StoryFrame, type TaskKind } from './Story';
+import { S } from '../strings';
+import { ASSIST_TIMEOUT, HOLD, readingTime, scenes, Story, TASKS, type Copy, type StoryFrame, type TaskKind } from './Story';
 
 const DT = 1 / 60;
 const PAGE: View = { position: new Vector3(1, 2, 3), target: new Vector3() };
@@ -12,9 +14,9 @@ const PAGE: View = { position: new Vector3(1, 2, 3), target: new Vector3() };
 /**
  * A thin fake controller: records calls, and fakes just enough state. The
  * three conditions follow their toggles at once; a prompt stays in flight
- * until the test lets the nib finish.
+ * until the test lets the nib finish; the line lands LINE_FLIGHT after it is sent.
  */
-function fakeController(store: Store, bus: Bus) {
+function fakeController(store: Store, bus: Bus, clock: { now: number; lineDue: number }) {
   const calls: string[] = [];
   const on = { ti: false, se: false, ni: false };
   const apply = () => (store.beam = deriveBeamState(on.ti ? 1 : 0, on.se ? 1 : 0, on.ni ? 1 : 0, on.ni ? 1 : 0));
@@ -46,7 +48,7 @@ function fakeController(store: Store, bus: Bus) {
     setFeed: vi.fn((v: boolean) => set('se', v, 'feed')),
     setCompile: vi.fn((v: boolean) => set('ni', v, 'compile')),
     shatter: vi.fn(() => set('ti', false, 'shatter')),
-    sendLine: vi.fn(),
+    sendLine: vi.fn(() => (clock.lineDue = clock.now + LINE_FLIGHT)),
     // Questions go out, but the fake never answers: only a lock or the assist timeout ends the step.
     ask: vi.fn(() => {
       bus.emit('ask');
@@ -67,10 +69,25 @@ describe('Story sequencing', () => {
   let bus: Bus;
   let story: Story;
   let f: ReturnType<typeof fakeController>;
-  let frames: StoryFrame[];
+  let frames: (StoryFrame & { at: number })[];
+  const clock = { now: 0, lineDue: Infinity };
   const last = () => frames[frames.length - 1];
+  const tick = () => {
+    clock.now += DT;
+    if (clock.now >= clock.lineDue) {
+      clock.lineDue = Infinity;
+      bus.emit('lineArrive');
+    }
+    story.update(DT);
+  };
   const run = (seconds: number) => {
-    for (let i = 0; i < Math.round(seconds / DT); i++) story.update(DT);
+    for (let i = 0; i < Math.round(seconds / DT); i++) tick();
+  };
+  /** Step until `done()` (or give up after `max` seconds); returns the time it took. */
+  const until = (done: () => boolean, max = 120) => {
+    const t0 = clock.now;
+    while (!done() && clock.now - t0 < max) tick();
+    return clock.now - t0;
   };
   /** The nib writes and finishes. */
   const finishDrawing = () => {
@@ -82,9 +99,11 @@ describe('Story sequencing', () => {
   beforeEach(() => {
     store = createStore(false);
     bus = new Bus();
-    f = fakeController(store, bus);
+    clock.now = 0;
+    clock.lineDue = Infinity;
+    f = fakeController(store, bus, clock);
     frames = [];
-    story = new Story(store, bus, f.ctl, { showStory: (fr) => frames.push(fr) });
+    story = new Story(store, bus, f.ctl, { showStory: (fr) => frames.push({ ...fr, at: clock.now }) });
   });
 
   it('starts from a reset, in working order, on scene 1 of Act I', () => {
@@ -96,24 +115,41 @@ describe('Story sequencing', () => {
     expect(story.count).toBe(10);
   });
 
-  it('Acts I and II advance on time, but never while a prompt is running; then they hold on the mark', () => {
+  it('nothing new goes up until the caption on screen has been read', () => {
     story.start();
-    run(scenes()[0].min + 6); // the prompt fired at 3 s and is still in flight
+    const need = readingTime(S().story.s1.caption);
+    run(need - 0.2);
+    expect(f.spy.prompt).not.toHaveBeenCalled();
+    expect(last().quote).toBeNull();
+    run(0.4);
+    expect(f.spy.prompt).toHaveBeenCalledTimes(1);
+    expect(last().quote).not.toBeNull();
+  });
+
+  it('never moves on while a prompt is running; then holds on the mark until its caption is read', () => {
+    story.start();
+    run(60);
     expect(f.spy.prompt).toHaveBeenCalledTimes(1);
     expect(story.scene).toBe(0);
     finishDrawing();
     run(HOLD - 0.2);
     expect(story.scene).toBe(0);
-    run(0.4);
+    const waited = until(() => story.scene === 1);
     expect(story.scene).toBe(1);
+    expect(waited + HOLD - 0.2).toBeGreaterThanOrEqual(readingTime(S().story.s1.drawing));
   });
 
-  it('a scene without a prompt advances after its time (the shatter comes on the line, or soon after)', () => {
+  it('the line lands just as it has been read, and Ti shatters when it does', () => {
     story.start(1);
-    run(scenes()[1].min - 0.2);
-    expect(f.spy.shatter).toHaveBeenCalledTimes(1);
+    until(() => f.spy.sendLine.mock.calls.length > 0, 30);
+    const sent = clock.now;
+    until(() => f.spy.shatter.mock.calls.length > 0, 30);
+    expect(clock.now - sent).toBeCloseTo(LINE_FLIGHT, 1);
+    // The line went up after the caption was read, and has been read by the time it lands.
+    const s = S();
+    expect(clock.now).toBeGreaterThanOrEqual(readingTime(s.story.s2.caption) + readingTime(s.story.line) - DT);
     expect(story.scene).toBe(1);
-    run(0.4);
+    until(() => story.scene === 2, 30);
     expect(story.scene).toBe(2);
   });
 
@@ -141,8 +177,21 @@ describe('Story sequencing', () => {
     run(0.1);
     expect(last().task).toBeNull();
     expect(last().ack).toBe(true);
-    run(4);
+    expect(last().text).toBe(TASKS[kind].done);
+    until(() => story.scene !== index, 30);
     expect(story.scene).toBe(index + 1);
+  });
+
+  it('a step done at once is acknowledged at once, but its caption still gets read', () => {
+    story.start(6);
+    f.dormant();
+    run(0.5);
+    f.set('se', true, 'feed');
+    run(0.1);
+    expect(last().ack).toBe(true);
+    expect(last().text).not.toBe(TASKS.feed.done);
+    const waited = until(() => last().text === TASKS.feed.done, 30);
+    expect(waited + 0.6).toBeGreaterThanOrEqual(readingTime(S().story.s7.caption) - DT);
   });
 
   it('“Do it for …” performs the step: feeding Se', () => {
@@ -153,7 +202,7 @@ describe('Story sequencing', () => {
     expect(f.spy.setFeed).toHaveBeenLastCalledWith(true);
     run(0.1);
     expect(last().ack).toBe(false);
-    run(4);
+    until(() => story.scene === 7, 30);
     expect(story.scene).toBe(7);
   });
 
@@ -166,18 +215,18 @@ describe('Story sequencing', () => {
     expect(last().quote).not.toBeNull();
     run(ASSIST_TIMEOUT);
     expect(f.spy.setLock).toHaveBeenLastCalledWith(true);
-    run(4);
+    until(() => story.scene === 6, 30);
     expect(story.scene).toBe(6);
   });
 
   it('Act III never moves on while the nib is writing', () => {
     story.start(8);
-    run(1);
+    run(3);
     expect(store.prompt.phase).toBe('incoming');
-    run(30);
+    run(60);
     expect(story.scene).toBe(8);
     finishDrawing();
-    run(HOLD + 0.2);
+    until(() => story.scene !== 8, 30);
     expect(story.scene).toBe(9);
   });
 
@@ -192,9 +241,9 @@ describe('Story sequencing', () => {
     expect(store.ui.storyAct).toBe(0);
   });
 
-  it('plays all ten scenes through and ends in the sandbox', () => {
+  it('plays all ten scenes through, every caption up for at least its reading time, and ends in the sandbox', () => {
     story.start();
-    for (let i = 0; i < 2000 && story.running; i++) {
+    while (story.running && clock.now < 600) {
       run(0.1);
       if (store.prompt.phase !== 'none') finishDrawing();
       story.assist();
@@ -202,5 +251,13 @@ describe('Story sequencing', () => {
     expect([...new Set(frames.map((fr) => fr.index))]).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
     expect(f.spy.prompt).toHaveBeenCalledTimes(4);
     expect(store.ui.mode).toBe('sandbox');
+
+    // Captions the story puts up in Acts I and II (in Act III the user's own actions set the pace).
+    let shown = null as { text: Copy; at: number; act: number } | null;
+    for (const fr of [...frames, { text: null, at: clock.now, act: 0 }]) {
+      if (fr.text === shown?.text) continue;
+      if (shown && shown.act < 3) expect(fr.at - shown.at, shown.text(S())).toBeGreaterThanOrEqual(readingTime(shown.text(S())) - DT);
+      shown = fr.text ? { text: fr.text, at: fr.at, act: fr.act } : null;
+    }
   });
 });

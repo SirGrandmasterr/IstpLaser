@@ -19,6 +19,8 @@ const STYLE: Record<Kind, { core: Color; halo: Color; size: number; dur: number 
   answer: { core: new Color(1.6, 1.25, 1.45), halo: new Color(1.0, 0.45, 0.7), size: 0.34, dur: 1.45 },
   line: { core: new Color(1.6, 1.25, 1.45), halo: new Color(1.0, 0.45, 0.7), size: 0.44, dur: 1.9 },
 };
+/** Seconds the story's line takes to reach Ti. */
+export const LINE_FLIGHT = STYLE.line.dur;
 /** Pause between a question leaving and its answer setting off. */
 const THINK = 0.35;
 /** A landing flares briefly at the target. */

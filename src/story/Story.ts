@@ -4,11 +4,15 @@
  * stage by stage with the real controls.
  *
  * A scene is a list of steps, run in order. Each step waits for its trigger
- * (scene time, time since the previous step, the nib starting or finishing, a
- * story event, a condition), then changes the caption, acts on the same
- * controls the user has, and/or moves the camera. A step may carry a task: the
- * scene then waits until the user meets its condition by hand, or presses
- * "Do it for {istp}".
+ * (scene time, the nib starting or finishing, a story event, a condition),
+ * then changes the caption, acts on the same controls the user has, and/or
+ * moves the camera. A step may carry a task: the scene then waits until the
+ * user meets its condition by hand, or presses "Do it for {istp}".
+ *
+ * Pacing follows the reader: every caption and spoken line stays up for its
+ * reading time (see `readingTime`), and a step that would replace the text
+ * waits for it. Longer copy (German) simply takes longer. The visual beats
+ * are spaced so each change can be watched, not just read about.
  *
  * Rules: the story never advances while the nib is writing, and holds on a
  * finished mark; whenever the nib writes, the camera cuts to the page; Skip
@@ -24,8 +28,9 @@ import { Vector3 } from 'three';
 import type { Controller } from '../app';
 import { HOME, type View } from '../scene/CameraRig';
 import { NI_POS, SE_POS, SHEET_CENTER, TI_POS } from '../scene/layout';
+import { LINE_FLIGHT } from '../scene/Messengers';
 import type { Bus, Store } from '../state';
-import type { Strings } from '../strings';
+import { S, type Strings } from '../strings';
 
 /** A piece of copy, read from the active strings whenever it is shown (so it follows a language switch). */
 export type Copy = (s: Strings) => string;
@@ -52,19 +57,30 @@ export interface StoryDisplay {
   showStory(frame: StoryFrame): void;
 }
 
+/** Reading pace while also watching the scene: a short pause, then this many characters a second. */
+export const READ_PAUSE = 2;
+export const READ_CPS = 15;
+
+/** Seconds a caption needs on screen to be read. */
+export function readingTime(text: string): number {
+  const n = text.trim().length;
+  return n ? READ_PAUSE + n / READ_CPS : 0;
+}
+
 /** Seconds to hold on a finished mark before the story moves on. */
-export const HOLD = 1.6;
+export const HOLD = 5;
 /** After "Do it for {istp}", the controls get this long to get there; then the story moves on regardless. */
 export const ASSIST_TIMEOUT = 12;
-/** Reading time once an Act III step is done. */
-const DONE_HOLD = 3.2;
+/** Camera moves: into a new scene, and within one. */
+const FLY = 3.0;
+const FLY_STEP = 2.6;
 
 type StoryEvent = 'line';
 
 interface Clock {
   /** Scene time. */
   t: number;
-  /** Since the previous step fired (or the task completed). */
+  /** Since the previous step fired (or the task was done). */
   since: number;
   /** The nib started writing in this scene. */
   drew: boolean;
@@ -72,20 +88,26 @@ interface Clock {
   sinceDraw: number;
   /** Story events since the previous step fired. */
   seen: Set<StoryEvent>;
+  /** How long the bar's newest words have been up, and how long they need to be read. */
+  shown: number;
+  need: number;
   store: Store;
 }
 
 type Trigger = (c: Clock) => boolean;
 
+const read = (c: Clock) => c.shown >= c.need;
 const at = (s: number): Trigger => (c) => c.t >= s;
 const drawing: Trigger = (c) => c.drew;
 const drawn: Trigger = (c) => c.drew && c.store.prompt.phase === 'none' && c.sinceDraw >= HOLD;
 const on = (e: StoryEvent, orAfter: number): Trigger => (c) => c.seen.has(e) || c.since >= orAfter;
+/** `lead` seconds before the current words have been read (to time something that should land just as they are). */
+const readIn = (lead: number): Trigger => (c) => c.shown >= c.need - lead;
 /** A condition, held for at least `min` after the previous step; gives up waiting after `max`. */
 const when =
   (f: (s: Store) => boolean, min = 0, max = Infinity): Trigger =>
-  (c) =>
-    c.since >= min && (f(c.store) || c.since >= max);
+    (c) =>
+      c.since >= min && (f(c.store) || c.since >= max);
 
 export interface Task {
   kind: TaskKind;
@@ -98,15 +120,15 @@ export interface Task {
   force?: (c: Controller) => void;
   /** The caption once it is done. */
   done: Copy;
-  /** Once done, either way. */
+  /** As soon as it is met, either way. */
   then?: (c: Controller) => void;
 }
 
 export interface Step {
   when: Trigger;
-  /** Replaces the caption (and the quote, unless one is given). */
+  /** Replaces the caption (and the quote, unless one is given). Waits until the current words have been read. */
   text?: Copy;
-  /** A line someone says, under the caption. */
+  /** A line someone says, under the caption. Also waits for the current words. */
   quote?: Copy | null;
   act?: (c: Controller) => void;
   view?: View | 'page';
@@ -118,7 +140,7 @@ export interface Scene {
   view: View | 'page';
   /** Shortest time on screen. */
   min: number;
-  /** Seconds after the last step (or a completed task) before moving on. */
+  /** Seconds to linger once the last words have been read, for the picture. */
   hold: number;
   steps: Step[];
 }
@@ -131,7 +153,7 @@ export const TASKS: Record<TaskKind, Task> = {
     kind: 'ask',
     hint: (s) => s.story.hints.ask,
     met: (s) => s.beam.tiLocked,
-    assist: () => {},
+    assist: () => { },
     force: (c) => c.setLock(true),
     done: (s) => s.story.s6.done,
   },
@@ -177,55 +199,56 @@ export function scenes(): Scene[] {
 
   return [
     // ── Act I · Together ──
-    // 1. All three hold. A prompt; the nib writes a heart.
+    // 1. All three hold. Once the scene has been taken in, a prompt; the nib writes a heart.
     {
       act: 1,
       view: wide,
-      min: 8.5,
-      hold: 0,
+      min: 0,
+      hold: 1.5,
       steps: [
         { when: at(0), text: (s) => s.story.s1.caption },
-        { when: at(3), quote: (s) => s.story.s1.prompt, act: (c) => c.prompt('thanked') },
+        { when: at(4), quote: (s) => s.story.s1.prompt, act: (c) => c.prompt('thanked') },
         { when: drawing, text: (s) => s.story.s1.drawing },
       ],
     },
 
     // ── Act II · The break ──
-    // 2. The companion's line flies into Ti, and Ti shatters.
+    // 2. The companion's line flies into Ti, landing just as it has been read, and Ti shatters.
     {
       act: 2,
       view: ti,
-      min: 9.5,
-      hold: 4.5,
+      min: 0,
+      hold: 2.5,
       steps: [
         { when: at(0), text: (s) => s.story.s2.caption },
-        { when: at(1.8), quote: (s) => s.story.line, act: (c) => c.sendLine() },
-        { when: on('line', 3), text: (s) => s.story.s2.shattered, act: (c) => c.shatter() },
+        { when: at(2), quote: (s) => s.story.line },
+        { when: readIn(LINE_FLIGHT), act: (c) => c.sendLine() },
+        { when: on('line', LINE_FLIGHT + 1), text: (s) => s.story.s2.shattered, act: (c) => c.shatter() },
       ],
     },
     // 3. Asked to say something with Ti in pieces: a burn-scribble.
     {
       act: 2,
       view: 'page',
-      min: 9,
-      hold: 0,
+      min: 0,
+      hold: 1.5,
       steps: [
         { when: at(0), quote: (s) => s.story.s3.prompt, act: (c) => c.prompt('okay') },
         { when: drawing, text: (s) => s.story.s3.drawing },
       ],
     },
-    // 4. They stop cuddling: Se coasts down. Alone, Ti puts its own picture together;
-    //    the beam dies inside Ni and the Ti–Ni loop appears.
+    // 4. They stop cuddling: Se coasts down, in plain view. Alone, Ti puts its own picture
+    //    together; the beam dies inside Ni and the Ti–Ni loop appears.
     {
       act: 2,
       view: chain,
-      min: 10.5,
-      hold: 3.6,
+      min: 0,
+      hold: 2.5,
       steps: [
         { when: at(0), text: (s) => s.story.s4.caption },
-        { when: at(0.4), act: (c) => c.setFeed(false) },
-        { when: at(3.6), text: (s) => s.story.s4.alone, act: (c) => c.setLock(true) },
-        { when: when((s) => s.beam.tiLocked && s.beam.seStarved, 2.6, 6), text: (s) => s.story.s4.loop },
+        { when: at(2.5), act: (c) => c.setFeed(false) },
+        { when: at(7.5), text: (s) => s.story.s4.alone, act: (c) => c.setLock(true) },
+        { when: when((s) => s.beam.tiLocked && s.beam.seStarved, 3, 6), text: (s) => s.story.s4.loop },
       ],
     },
     // 5. Ni lets go of the direction. Asked again, nothing comes: a dry groove.
@@ -234,11 +257,11 @@ export function scenes(): Scene[] {
       act: 2,
       view: ni,
       min: 0,
-      hold: 4,
+      hold: 2.5,
       steps: [
         { when: at(0), text: (s) => s.story.s5.caption },
-        { when: at(0.5), act: (c) => c.setCompile(false) },
-        { when: at(3.4), quote: (s) => s.story.s5.prompt, act: (c) => c.prompt('hurting') },
+        { when: at(2), act: (c) => c.setCompile(false) },
+        { when: at(5), quote: (s) => s.story.s5.prompt, act: (c) => c.prompt('hurting') },
         { when: drawing, text: (s) => s.story.s5.drawing },
         { when: drawn, view: ti, text: (s) => s.story.s5.dormant, act: (c) => c.setLock(false) },
         { when: when((s) => s.beam.dormant, 0, 4) },
@@ -247,22 +270,22 @@ export function scenes(): Scene[] {
 
     // ── Act III · Repair ──
     // 6. Ti: ask.
-    { act: 3, view: ask, min: 0, hold: DONE_HOLD, steps: [{ when: at(0), text: (s) => s.story.s6.caption, task: TASKS.ask }] },
+    { act: 3, view: ask, min: 0, hold: 2, steps: [{ when: at(0), text: (s) => s.story.s6.caption, task: TASKS.ask }] },
     // 7. Se: closeness again.
-    { act: 3, view: se, min: 0, hold: DONE_HOLD, steps: [{ when: at(0), text: (s) => s.story.s7.caption, task: TASKS.feed }] },
+    { act: 3, view: se, min: 0, hold: 2, steps: [{ when: at(0), text: (s) => s.story.s7.caption, task: TASKS.feed }] },
     // 8. Ni and the page: a direction.
-    { act: 3, view: niPage, min: 0, hold: DONE_HOLD, steps: [{ when: at(0), text: (s) => s.story.s8.caption, task: TASKS.compile }] },
+    { act: 3, view: niPage, min: 0, hold: 2, steps: [{ when: at(0), text: (s) => s.story.s8.caption, task: TASKS.compile }] },
     // 9. The page: the heart again.
     {
       act: 3,
       view: 'page',
-      min: 9,
-      hold: 0,
+      min: 0,
+      hold: 1.5,
       steps: [
         { when: at(0), quote: (s) => s.story.s9.prompt },
         {
           // The controls are the user's now; if something came undone, put it back before asking.
-          when: when(allThree, 0.6, 3),
+          when: when(allThree, 1, 3),
           act: (c) => {
             c.setLock(true);
             c.setFeed(true);
@@ -274,7 +297,7 @@ export function scenes(): Scene[] {
       ],
     },
     // 10. Hand control back.
-    { act: 3, view: wide, min: 7, hold: 0, steps: [{ when: at(0), text: (s) => s.story.s10.caption }] },
+    { act: 3, view: wide, min: 0, hold: 3, steps: [{ when: at(0), text: (s) => s.story.s10.caption }] },
   ];
 }
 
@@ -286,6 +309,8 @@ export class Story {
   private text: Copy | null = null;
   private quote: Copy | null = null;
   private task: Task | null = null;
+  /** The open task's condition has been met; its caption moves on once the current words have been read. */
+  private met = false;
   private assisted = false;
   private assistFor = 0;
   private ack = false;
@@ -297,19 +322,24 @@ export class Story {
     private ctl: Controller,
     private ui: StoryDisplay,
   ) {
-    this.clock = { t: 0, since: 0, drew: false, sinceDraw: Infinity, seen: new Set(), store };
+    this.clock = { t: 0, since: 0, drew: false, sinceDraw: Infinity, seen: new Set(), shown: 0, need: 0, store };
     bus.on('drawStart', () => {
       if (!this.running) return;
       this.clock.drew = true;
-      this.ctl.view(this.ctl.pageView(), 1.3);
+      this.ctl.view(this.ctl.pageView(), 1.4);
     });
     bus.on('drawEnd', () => (this.clock.sinceDraw = 0));
     bus.on('lineArrive', () => this.clock.seen.add('line'));
     // Each question shows as it is asked.
     bus.on('ask', () => {
-      if (!this.running || this.task?.kind !== 'ask') return;
+      if (!this.running || this.task?.kind !== 'ask' || this.met) return;
       const i = Math.min(this.asked++, 2);
-      this.quote = (s) => s.story.questions[i];
+      const question: Copy = (s) => s.story.questions[i];
+      this.quote = question;
+      // Asked by hand, maybe before the caption above it has been read: it still gets its time.
+      const c = this.clock;
+      c.need = Math.max(c.need - c.shown, readingTime(question(S())));
+      c.shown = 0;
       this.show();
     });
   }
@@ -349,7 +379,7 @@ export class Story {
 
   /** "Do it for {istp}". */
   assist(): void {
-    if (!this.running || !this.task || this.assisted) return;
+    if (!this.running || !this.task || this.met || this.assisted) return;
     this.assisted = true;
     this.assistFor = 0;
     this.task.assist(this.ctl);
@@ -362,13 +392,14 @@ export class Story {
     c.t += dt;
     c.since += dt;
     c.sinceDraw += dt;
+    c.shown += dt;
     this.fireReady();
     if (this.task) this.updateTask(dt);
     if (!this.running) return;
     const sc = this.list[this.index];
     const finished = !this.task && this.stepAt >= sc.steps.length;
-    // Never cut away mid-stroke: wait for the nib to finish, then hold on the mark.
-    if (finished && c.t >= sc.min && c.since >= sc.hold && this.store.prompt.phase === 'none' && c.sinceDraw >= HOLD) this.next();
+    // Never cut away mid-stroke, and only once the last words have been read and the picture has had a moment.
+    if (finished && c.t >= sc.min && c.shown >= c.need + sc.hold && this.store.prompt.phase === 'none' && c.sinceDraw >= HOLD) this.next();
   }
 
   private next(): void {
@@ -379,25 +410,36 @@ export class Story {
     }
     const sc = this.list[this.index];
     const c = this.clock;
-    c.t = c.since = 0;
+    c.t = c.since = c.shown = c.need = 0;
     c.drew = false;
     c.sinceDraw = Infinity;
     c.seen.clear();
     this.stepAt = 0;
     this.text = this.quote = this.task = null;
-    this.assisted = this.ack = false;
+    this.met = this.assisted = this.ack = false;
     this.asked = 0;
     this.store.ui.storyAct = sc.act;
-    this.ctl.view(this.resolve(sc.view), this.index === 0 ? 2.4 : 2.2);
+    this.ctl.view(this.resolve(sc.view), FLY);
     this.fireReady();
     this.show();
+  }
+
+  /** New words went up: restart the reading clock for them. */
+  private showing(words: string): void {
+    this.clock.shown = 0;
+    this.clock.need = readingTime(words);
   }
 
   private fireReady(): void {
     const steps = this.list[this.index].steps;
     let fired = false;
-    while (!this.task && this.stepAt < steps.length && steps[this.stepAt].when(this.clock)) {
-      this.fire(steps[this.stepAt++]);
+    while (!this.task && this.stepAt < steps.length) {
+      const st = steps[this.stepAt];
+      // Anything that replaces or adds words waits until the current ones have been read.
+      if ((st.text || st.quote !== undefined) && !read(this.clock)) break;
+      if (!st.when(this.clock)) break;
+      this.fire(st);
+      this.stepAt++;
       fired = true;
     }
     if (fired) this.show();
@@ -405,16 +447,19 @@ export class Story {
 
   private fire(st: Step): void {
     st.act?.(this.ctl);
-    if (st.view) this.ctl.view(this.resolve(st.view), 2.0);
+    if (st.view) this.ctl.view(this.resolve(st.view), FLY_STEP);
+    const s = S();
     if (st.text) {
       this.text = st.text;
       this.quote = st.quote ?? null;
+      this.showing(`${st.text(s)} ${st.quote?.(s) ?? ''}`);
     } else if (st.quote !== undefined) {
       this.quote = st.quote;
+      this.showing(st.quote?.(s) ?? '');
     }
     if (st.task) {
       this.task = st.task;
-      this.assisted = this.ack = false;
+      this.met = this.assisted = this.ack = false;
       this.asked = 0;
     }
     this.clock.since = 0;
@@ -423,27 +468,34 @@ export class Story {
 
   private updateTask(dt: number): void {
     const task = this.task!;
-    if (task.met(this.store)) {
-      this.complete(!this.assisted);
-      return;
+    if (!this.met && task.met(this.store)) this.meet(!this.assisted);
+    if (!this.met && this.assisted) {
+      this.assistFor += dt;
+      // Asking for them: one question at a time, until Ti locks.
+      if (task.kind === 'ask' && !this.ctl.asking) this.ctl.ask();
+      if (this.assistFor >= ASSIST_TIMEOUT) {
+        task.force?.(this.ctl);
+        this.meet(false);
+      }
     }
-    if (!this.assisted) return;
-    this.assistFor += dt;
-    // Asking for them: one question at a time, until Ti locks.
-    if (task.kind === 'ask' && !this.ctl.asking) this.ctl.ask();
-    if (this.assistFor >= ASSIST_TIMEOUT) {
-      task.force?.(this.ctl);
-      this.complete(false);
-    }
+    // Acknowledged at once; the caption moves on once the current words have been read.
+    if (this.met && read(this.clock)) this.complete();
   }
 
-  private complete(byHand: boolean): void {
+  private meet(byHand: boolean): void {
+    this.met = true;
+    this.ack = byHand;
+    this.task!.then?.(this.ctl);
+    this.show();
+  }
+
+  private complete(): void {
     const task = this.task!;
     this.task = null;
-    task.then?.(this.ctl);
     this.text = task.done;
     this.quote = null;
-    this.ack = byHand;
+    const s = S();
+    this.showing(`${task.done(s)} ${this.ack ? s.story.byHand : ''}`);
     this.clock.since = 0;
     this.show();
   }
@@ -461,7 +513,7 @@ export class Story {
       act: sc.act,
       text: this.text,
       quote: this.quote,
-      task: this.task ? { kind: this.task.kind, hint: this.task.hint } : null,
+      task: this.task && !this.met ? { kind: this.task.kind, hint: this.task.hint } : null,
       assisted: this.assisted,
       ack: this.ack,
     });
