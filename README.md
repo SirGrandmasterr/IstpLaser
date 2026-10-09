@@ -14,6 +14,19 @@ npm run build     # type-check + static build into dist/
 npm run preview   # serve dist/ locally
 ```
 
+### Docker
+
+```bash
+# Using Docker Compose:
+docker compose up --build
+
+# Or standard Docker:
+docker build -t istp-ballpoint .
+docker run -p 8080:80 istp-ballpoint
+```
+
+Then visit `http://localhost:8080`.
+
 `dist/` is fully static, with relative asset paths. Drop it on any static host, sub-path included. There's no backend and no analytics. Nothing is downloaded at runtime: all geometry is procedural and all textures are generated in the browser.
 
 Append `?nowebgl` to the URL to see the WebGL-unsupported fallback.

@@ -1,0 +1,9 @@
+services:
+  istp-ballpoint:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: istp-ballpoint
+    ports:
+      - "8080:80"
+    restart: unless-stopped
