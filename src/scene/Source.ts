@@ -24,8 +24,8 @@ export class Source implements Instrument {
   readonly id = 'source' as const;
   readonly group = new Group();
   readonly pickables: Object3D[] = [];
-  /** Below-left of the emitter: the top-left corner belongs to the HUD. */
-  readonly labelAnchor = labelAnchor(SOURCE, -0.5);
+  /** Leader start: below-left of the emitter, clear of the brand. */
+  readonly labelAnchor = labelAnchor(SOURCE, -0.42);
   readonly view = {
     position: SOURCE.clone().add(new Vector3(1.8, 0.9, 3.6)),
     target: SOURCE.clone().addScaledVector(DIR, 0.6),

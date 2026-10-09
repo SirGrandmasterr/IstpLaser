@@ -200,6 +200,10 @@ export const S = {
     hud: 'Beam readout',
     panel: 'Controls',
     loop: 'Ti and Ni keep passing the beam back and forth: nothing reaches the world.',
+    lock: 'Lock Ti alignment',
+    feed: 'Feed Se a steady stream',
+    compile: 'Compile Ni direction',
+    skip: 'Skip the story',
   },
 
   close: 'Close',

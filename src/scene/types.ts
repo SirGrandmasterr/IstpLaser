@@ -30,7 +30,7 @@ export interface Instrument {
   readonly group: Group;
   /** Meshes that a click should resolve to this instrument. */
   readonly pickables: Object3D[];
-  /** World position the CSS label hangs from. */
+  /** World point on the instrument's rim where its plate's leader line starts. */
   readonly labelAnchor: Vector3;
   /** Camera framing when focused. */
   readonly view: { position: Vector3; target: Vector3 };

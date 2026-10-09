@@ -14,8 +14,9 @@ RUN npm run build
 # Production Serving Stage
 FROM nginx:alpine AS runner
 
-# Copy customized Nginx server configuration
+# Copy customized Nginx server configuration (and the header snippet every location includes)
 COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY nginx/security-headers.conf /etc/nginx/snippets/security-headers.conf
 
 # Copy production assets from builder stage
 COPY --from=builder /app/dist /usr/share/nginx/html

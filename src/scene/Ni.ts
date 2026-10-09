@@ -33,7 +33,7 @@ export class Ni implements Instrument {
   readonly id = 'ni' as const;
   readonly group = new Group();
   readonly pickables: Object3D[] = [];
-  readonly labelAnchor = labelAnchor(NI_POS, 1.25);
+  readonly labelAnchor = labelAnchor(NI_POS, 1.0);
   readonly view = {
     position: NI_POS.clone().add(new Vector3(2.6, 1.6, 5.6)),
     target: NI_POS.clone().add(new Vector3(0.3, -0.15, 0)),

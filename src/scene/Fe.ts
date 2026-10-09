@@ -60,7 +60,7 @@ export class Fe implements Instrument {
   readonly id = 'fe' as const;
   readonly group = new Group();
   readonly pickables: Object3D[] = [];
-  readonly labelAnchor = labelAnchor(FE_POS, 0.75);
+  readonly labelAnchor = labelAnchor(FE_POS, 0.28);
   readonly view = {
     position: FE_POS.clone().add(new Vector3(-0.6, 1.0, 3.1)),
     target: FE_POS.clone().add(new Vector3(-0.3, -0.05, 0)),

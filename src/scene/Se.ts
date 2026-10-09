@@ -31,7 +31,7 @@ export class Se implements Instrument {
   readonly id = 'se' as const;
   readonly group = new Group();
   readonly pickables: Object3D[] = [];
-  readonly labelAnchor = labelAnchor(SE_POS, 1.85);
+  readonly labelAnchor = labelAnchor(SE_POS, 1.38);
   readonly view = {
     position: SE_POS.clone().add(new Vector3(3.0, 1.8, 6.8)),
     target: SE_POS.clone(),

@@ -113,13 +113,15 @@ export class CameraRig {
     // Keep the horizontal field of view over the *visible* area roughly constant,
     // so narrower screens widen the view instead of cropping the construct.
     // …and never let the visible strip (above a bottom drawer) drop below the base vertical FOV.
+    // The info card (left inset) only shifts the view: it opens with a close-up of one
+    // instrument, and widening for it too would push that instrument far into the distance.
     const visH = Math.max(200, h - this.insets.bottom);
-    const visibleAspect = Math.max(0.5, (w - this.insets.left - this.insets.right) / visH);
+    const visibleAspect = Math.max(0.5, (w - this.insets.right) / visH);
     const k = h / visH;
     const byWidth = 2 * Math.atan((REF_HALF_TAN / visibleAspect) * k);
     const byHeight = 2 * Math.atan(Math.tan(((BASE_FOV / 2) * Math.PI) / 180) * k);
     const fov = (Math.max(byWidth, byHeight) * 180) / Math.PI;
-    this.camera.fov = Math.min(70, Math.max(BASE_FOV, fov));
+    this.camera.fov = Math.min(62, Math.max(BASE_FOV, fov));
     if (shift !== 0 || shiftY !== 0) this.camera.setViewOffset(w, h, shift, shiftY, w, h);
     else this.camera.clearViewOffset();
     this.camera.updateProjectionMatrix();

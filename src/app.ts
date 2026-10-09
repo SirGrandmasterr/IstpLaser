@@ -3,7 +3,6 @@
  * interaction layer, the UI, the story and audio. One frame loop.
  */
 import { ACESFilmicToneMapping, Scene, SRGBColorSpace, Vector3, WebGLRenderer } from 'three';
-import { CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { Audio } from './audio/Audio';
 import { Interaction } from './interaction';
 import { computeBeamState, INITIAL_BEAM_STATE, TI_LOCK } from './model/beam';
@@ -65,7 +64,6 @@ export class App implements Controller {
   readonly store: Store;
   readonly bus = new Bus();
   private renderer: WebGLRenderer;
-  private labels: CSS2DRenderer;
   private scene = new Scene();
   private rig: CameraRig;
   private post: Post;
@@ -113,10 +111,6 @@ export class App implements Controller {
     this.renderer.domElement.setAttribute('role', 'img');
     root.appendChild(this.renderer.domElement);
 
-    this.labels = new CSS2DRenderer();
-    this.labels.domElement.className = 'labels';
-    root.appendChild(this.labels.domElement);
-
     this.rig = new CameraRig(this.renderer.domElement);
     buildEnvironment(this.scene, this.renderer);
     this.instruments = [this.source, this.ti, this.se, this.ni, this.fe];
@@ -142,7 +136,7 @@ export class App implements Controller {
       },
     );
 
-    this.ui = new UI(root, this.store, this.bus, this, this.instruments, this.sheet, this.scene);
+    this.ui = new UI(root, this.store, this.bus, this, this.instruments, this.rig.camera);
     this.story = new Story(this.store, this.bus, this, this.ui);
 
     this.bus.on('tiLock', () => this.audio.click());
@@ -222,7 +216,8 @@ export class App implements Controller {
   private updateInsets(): void {
     const w = this.root.clientWidth;
     const wide = w >= 1024;
-    const card = wide && this.store.ui.focus !== null ? 372 : 0;
+    const cardEl = this.root.querySelector<HTMLElement>('.card');
+    const card = wide && this.store.ui.focus !== null ? (cardEl?.offsetWidth ?? 340) + 32 : 0;
     // On tablets the panel is a bottom drawer: lift the scene above it while it is open.
     const drawer = !wide && this.store.ui.panelOpen ? (this.root.querySelector('.panel')?.clientHeight ?? 0) + 60 : 0;
     this.rig.setInsets(card, wide && this.store.ui.panelOpen ? 332 : 0, drawer);
@@ -317,7 +312,6 @@ export class App implements Controller {
     const w = this.root.clientWidth;
     const h = this.root.clientHeight;
     this.renderer.setSize(w, h);
-    this.labels.setSize(w, h);
     this.post.setSize(w, h, this.pixelRatio);
     this.rig.resize(w, h);
     this.updateInsets();
@@ -448,6 +442,6 @@ export class App implements Controller {
 
     if (!render) return;
     this.post.render(this.time, store.ui.reducedMotion);
-    this.labels.render(this.scene, this.rig.camera);
+    this.ui.placeLabels();
   }
 }
