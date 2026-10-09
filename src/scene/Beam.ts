@@ -219,15 +219,16 @@ export class Beam {
     }
 
     // 6. Ni → galvo mirrors → ball: rose. An unfocused beam arrives wide and soft.
-    const I3 = I2 * survive * (0.45 + 0.55 * beam.F);
+    const I3 = I2 * survive * (0.35 + 0.4 * beam.F);
     const r3 = 0.016 * (1 + 2.2 * unfocused * C);
     fe.galvoWorld(0, this.g1);
     fe.galvoWorld(1, this.g2);
     fe.ballWorld(this.ball);
     const col3 = mix(INDIGO, ROSE, 0.55);
+    // Short hops between the mirrors get less glow so the joints don't pile up into blobs.
     this.push(this.pNiOut, this.g1, r3, col3, I3);
-    this.push(this.g1, this.g2, r3, mix(INDIGO, ROSE, 0.8), I3);
-    this.push(this.g2, this.ball, r3, ROSE, I3);
+    this.push(this.g1, this.g2, r3 * 0.8, mix(INDIGO, ROSE, 0.8), I3 * 0.9, 0.35);
+    this.push(this.g2, this.ball, r3 * 0.8, ROSE, I3 * 0.9, 0.35);
 
     // 7. Out of the nib onto the page, only while Fe is actuated.
     const target = ctx.drawing ? ctx.drawPoint : ctx.aimPoint;

@@ -21,7 +21,7 @@ import {
   Vector3,
 } from 'three';
 import { smoothstep } from '../model/beam';
-import { AXIS_QUAT, TI_POS } from './layout';
+import { AXIS_QUAT, labelAnchor, TI_POS } from './layout';
 import { glass, knurled, titanium } from './materials';
 import type { FrameContext, Instrument } from './types';
 
@@ -55,7 +55,7 @@ export class Ti implements Instrument {
   readonly id = 'ti' as const;
   readonly group = new Group();
   readonly pickables: Object3D[] = [];
-  readonly labelAnchor = TI_POS.clone().add(new Vector3(0.2, 2.75, 0));
+  readonly labelAnchor = labelAnchor(TI_POS, 2.75);
   readonly view = {
     position: TI_POS.clone().add(new Vector3(2.6, 1.6, 6.6)),
     target: TI_POS.clone(),

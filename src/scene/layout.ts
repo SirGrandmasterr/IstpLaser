@@ -49,4 +49,11 @@ export function worldToSheet(p: Vector3): { x: number; y: number } {
 /** Margin so that a full-size heart stays on the paper. */
 export const RETICLE_LIMIT = { x: SHEET_W / 2 - 0.68, y: SHEET_H / 2 - 0.62 };
 
-export const CONSTRUCT_CENTER = new Vector3(-0.9, 3.0, 0);
+export const CONSTRUCT_CENTER = new Vector3(-2.0, 2.3, 0);
+
+/** Perpendicular to the beam in the vertical plane, pointing up and right: labels hang out here. */
+export const LABEL_SIDE = new Vector3(-DIR.y, DIR.x, 0);
+
+export function labelAnchor(center: Vector3, distance: number): Vector3 {
+  return center.clone().addScaledVector(LABEL_SIDE, distance);
+}

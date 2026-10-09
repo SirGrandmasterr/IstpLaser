@@ -316,6 +316,8 @@ export class UI {
     root.addEventListener('click', () => this.ctl.focus(id));
     root.addEventListener('pointerdown', (e) => e.stopPropagation());
     const obj = new CSS2DObject(root);
+    // Bottom-left corner at the anchor: plates extend up and away from the beam.
+    obj.center.set(0, 1);
     obj.position.set(at.x, at.y, at.z);
     scene.add(obj);
     this.labels.push({ id, root, state, obj });

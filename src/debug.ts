@@ -4,6 +4,7 @@
  *
  *   __T(ti, se, ni, kind?, drawFor?)  set conditions, wait, fire a prompt, draw
  *   __V(id)                           fly the camera to an instrument (no card)
+ *   __NT()                            disable CSS transitions (they freeze in hidden tabs)
  */
 import type { App } from './app';
 import type { InstrumentId, PromptKind } from './strings';
@@ -22,6 +23,11 @@ export function installDebug(app: App): void {
     app.step(2.6 + drawFor);
     const b = app.store.beam;
     return { out: b.output, C: +b.C.toFixed(2), E: +b.E.toFixed(2), F: +b.F.toFixed(2), phase: app.store.prompt.phase };
+  };
+  w.__NT = () => {
+    const st = document.createElement('style');
+    st.textContent = '*,*::before,*::after{transition:none!important;animation:none!important}';
+    document.head.append(st);
   };
   w.__V = (id: InstrumentId) => {
     app.focus(id);

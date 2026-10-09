@@ -23,7 +23,7 @@ import {
   Vector2,
   Vector3,
 } from 'three';
-import { AXIS_QUAT, FE_POS } from './layout';
+import { AXIS_QUAT, FE_POS, labelAnchor } from './layout';
 import { knurled, titanium } from './materials';
 import { glowTexture } from './textures';
 import type { FrameContext, Instrument } from './types';
@@ -42,10 +42,10 @@ export class Fe implements Instrument {
   readonly id = 'fe' as const;
   readonly group = new Group();
   readonly pickables: Object3D[] = [];
-  readonly labelAnchor = FE_POS.clone().add(new Vector3(0.45, 0.85, 0));
+  readonly labelAnchor = labelAnchor(FE_POS, 0.75);
   readonly view = {
-    position: FE_POS.clone().add(new Vector3(1.6, 0.9, 3.2)),
-    target: FE_POS.clone().add(new Vector3(0.1, -0.15, 0)),
+    position: FE_POS.clone().add(new Vector3(-0.6, 1.0, 3.1)),
+    target: FE_POS.clone().add(new Vector3(-0.3, -0.05, 0)),
   };
 
   private nib = new Group();
@@ -101,7 +101,8 @@ export class Fe implements Instrument {
     this.nib.add(socketMesh, collar, collarCap, ball);
 
     // Galvo mirrors on tiny motors.
-    const chrome = new MeshStandardMaterial({ color: 0xe8ecf4, metalness: 1, roughness: 0.04 });
+    // Satin rather than chrome: a mirror-finish highlight from the nib light blooms into a blob.
+    const chrome = new MeshStandardMaterial({ color: 0x8e96a8, metalness: 1, roughness: 0.32, envMapIntensity: 0.8 });
     const motorGeo = new CylinderGeometry(0.035, 0.035, 0.12, 16);
     for (const p of GALVO_LOCAL) {
       const mirror = new Mesh(new BoxGeometry(0.15, 0.1, 0.012), chrome);
@@ -125,7 +126,7 @@ export class Fe implements Instrument {
       }),
     );
     this.spark.position.copy(BALL_LOCAL);
-    this.spark.scale.setScalar(0.5);
+    this.spark.scale.setScalar(0.32);
     this.nib.add(this.spark, this.light);
     this.pickables.push(socketMesh, collar, ball);
   }
@@ -158,8 +159,8 @@ export class Fe implements Instrument {
     this.nib.position.z = 0.06 * a;
     const wobble = ctx.drawing && !ctx.reducedMotion ? 0.004 * Math.sin(ctx.time * 60) : 0;
     this.nib.position.x = wobble;
-    this.ballMat.emissiveIntensity = 0.15 + 0.35 * ctx.beam.E * (1 - a) + 3.2 * a;
-    this.light.intensity = 3.5 * a;
-    this.spark.material.opacity = 0.75 * a;
+    this.ballMat.emissiveIntensity = 0.15 + 0.35 * ctx.beam.E * (1 - a) + 1.4 * a;
+    this.light.intensity = 2.2 * a;
+    this.spark.material.opacity = 0.35 * a;
   }
 }

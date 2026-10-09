@@ -39,6 +39,7 @@ export class Interaction {
   private ringDrag: { lastAngle: number; raw: number } | null = null;
   private reticleDrag = false;
   private reticleMoved = 0;
+  private reticleSpeed = 0;
   private stillFor = 0;
   private hoverTi = false;
   private lastPointer: { x: number; y: number } | null = null;
@@ -249,13 +250,17 @@ export class Interaction {
 
     const c = this.store.controls;
     if (this.reticleDrag) {
-      const speed = this.reticleMoved / Math.max(dt, 1e-3);
+      // Smoothed speed (≈0.12 s window) so sparse pointer events still read as "moving".
+      const inst = this.reticleMoved / Math.max(dt, 1e-3);
       this.reticleMoved = 0;
-      if (speed > 0.35) this.stillFor = 0;
+      this.reticleSpeed += (inst - this.reticleSpeed) * Math.min(1, dt / 0.12);
+      const moving = this.reticleSpeed > 0.3;
+      if (moving) this.stillFor = 0;
       else this.stillFor += dt;
-      c.reticleDrive = speed > 0.35 ? -1 : this.stillFor > 0.12 ? 1 : 0;
+      c.reticleDrive = moving ? -1 : this.stillFor > 0.12 ? 1 : 0;
     } else {
       this.reticleMoved = 0;
+      this.reticleSpeed = 0;
     }
   }
 }

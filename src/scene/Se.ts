@@ -17,7 +17,7 @@ import {
   TorusGeometry,
   Vector3,
 } from 'three';
-import { AXIS_QUAT, SE_POS } from './layout';
+import { AXIS_QUAT, labelAnchor, SE_POS } from './layout';
 import { titanium } from './materials';
 import { glowTexture, gridTextures } from './textures';
 import type { FrameContext, Instrument } from './types';
@@ -31,7 +31,7 @@ export class Se implements Instrument {
   readonly id = 'se' as const;
   readonly group = new Group();
   readonly pickables: Object3D[] = [];
-  readonly labelAnchor = SE_POS.clone().add(new Vector3(0.1, 1.75, 0));
+  readonly labelAnchor = labelAnchor(SE_POS, 1.85);
   readonly view = {
     position: SE_POS.clone().add(new Vector3(2.4, 1.3, 5.2)),
     target: SE_POS.clone(),

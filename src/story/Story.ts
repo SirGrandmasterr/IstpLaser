@@ -22,19 +22,18 @@ const mid = (...p: Vector3[]) => p.reduce((a, b) => a.clone().add(b)).multiplySc
 
 function scenes(): Scene[] {
   const sheet = sheetToWorld(0, 0);
+  // Story framings sit a little higher than the sandbox view: the story bar covers the bottom.
+  const lift = new Vector3(0.3, -0.75, 0);
+  const wide: View = { target: HOME.target.clone().add(lift), position: HOME.position.clone().add(lift).add(new Vector3(0.4, 0.6, 1.8)) };
   return [
     // 1. Idle, all off: Ti loops the beam inside itself.
-    { dur: 8.5, view: v(TI_POS.clone().add(new Vector3(0.6, -0.4, 0)), new Vector3(3.2, 2.4, 9)), actions: [] },
+    { dur: 8.5, view: v(TI_POS.clone().add(new Vector3(1.4, -1.2, 0)), new Vector3(4.4, 3.4, 12.4)), actions: [] },
     // 2. A prompt with Ti off: burn-scribble.
-    {
-      dur: 9.5,
-      view: v(mid(TI_POS, sheet).add(new Vector3(0.4, -0.2, 0)), new Vector3(3.6, 5.2, 13.4)),
-      actions: [[0.6, (c) => c.prompt('okay')]],
-    },
+    { dur: 9.5, view: wide, actions: [[0.6, (c) => c.prompt('okay')]] },
     // 3. Ti locks, Se starved: the beam dies in Ni; dry groove.
     {
       dur: 10,
-      view: v(mid(TI_POS, NI_POS, sheet).add(new Vector3(0, 0.2, 0)), new Vector3(2.6, 4.2, 11.5)),
+      view: { target: mid(TI_POS, NI_POS).add(new Vector3(0.6, -1.6, 0)), position: mid(TI_POS, NI_POS).add(new Vector3(5.6, 4.6, 14.2)) },
       actions: [
         [0.3, (c) => c.setLock(true)],
         [3.4, (c) => c.prompt('hurting')],
@@ -43,7 +42,7 @@ function scenes(): Scene[] {
     // 4. Particles arrive, ring spins up, Ni still flat: pink wash.
     {
       dur: 10,
-      view: v(mid(SE_POS, sheet).add(new Vector3(0, 0.3, 0)), new Vector3(3.4, 3.8, 10.5)),
+      view: v(mid(SE_POS, sheet).add(new Vector3(-0.9, -0.3, 0)), new Vector3(3.6, 4.6, 13.4)),
       actions: [
         [0.2, (c) => c.setFeed(true)],
         [3.4, (c) => c.prompt('okay')],
@@ -52,14 +51,14 @@ function scenes(): Scene[] {
     // 5. Ni telescopes: heart.
     {
       dur: 10,
-      view: v(mid(NI_POS, sheet).add(new Vector3(-0.2, 0.3, 0)), new Vector3(2.6, 3.4, 8.6)),
+      view: v(mid(NI_POS, sheet).add(new Vector3(-0.9, -0.7, 0)), new Vector3(3.0, 4.0, 10.6)),
       actions: [
         [0.2, (c) => c.setCompile(true)],
         [2.6, (c) => c.prompt('hurting')],
       ],
     },
     // 6. Hold on the heart; hand control back.
-    { dur: 8.5, view: HOME, actions: [[0.8, (c) => c.prompt('thanked')]] },
+    { dur: 8.5, view: wide, actions: [[0.8, (c) => c.prompt('thanked')]] },
   ];
 }
 

@@ -15,7 +15,7 @@ import {
   SpriteMaterial,
   Vector3,
 } from 'three';
-import { AXIS_QUAT, DIR, SOURCE } from './layout';
+import { AXIS_QUAT, DIR, labelAnchor, SOURCE } from './layout';
 import { titanium } from './materials';
 import { glowTexture } from './textures';
 import type { FrameContext, Instrument } from './types';
@@ -24,7 +24,7 @@ export class Source implements Instrument {
   readonly id = 'source' as const;
   readonly group = new Group();
   readonly pickables: Object3D[] = [];
-  readonly labelAnchor = SOURCE.clone().add(new Vector3(-0.4, 0.75, 0));
+  readonly labelAnchor = labelAnchor(SOURCE, 0.75);
   readonly view = {
     position: SOURCE.clone().add(new Vector3(1.8, 0.9, 3.6)),
     target: SOURCE.clone().addScaledVector(DIR, 0.6),

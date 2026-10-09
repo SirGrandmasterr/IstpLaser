@@ -17,7 +17,7 @@ import {
   Vector3,
 } from 'three';
 import { seGate } from '../model/beam';
-import { AXIS_QUAT, NI_POS } from './layout';
+import { AXIS_QUAT, labelAnchor, NI_POS } from './layout';
 import { glass, titanium } from './materials';
 import { glowTexture } from './textures';
 import type { FrameContext, Instrument } from './types';
@@ -33,7 +33,7 @@ export class Ni implements Instrument {
   readonly id = 'ni' as const;
   readonly group = new Group();
   readonly pickables: Object3D[] = [];
-  readonly labelAnchor = NI_POS.clone().add(new Vector3(0.35, 1.3, 0));
+  readonly labelAnchor = labelAnchor(NI_POS, 1.25);
   readonly view = {
     position: NI_POS.clone().add(new Vector3(2.6, 1.6, 5.6)),
     target: NI_POS.clone().add(new Vector3(0.3, -0.15, 0)),

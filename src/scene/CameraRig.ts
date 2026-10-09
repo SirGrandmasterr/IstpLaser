@@ -12,7 +12,7 @@ export interface View {
 }
 
 export const HOME: View = {
-  position: new Vector3(7.2, 8.6, 15.5),
+  position: new Vector3(6.6, 8.4, 18.0),
   target: CONSTRUCT_CENTER.clone(),
 };
 
