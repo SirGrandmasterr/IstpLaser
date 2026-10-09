@@ -15,6 +15,8 @@ import { glowTexture } from './textures';
 
 const INCOMING = 2.0;
 const CHARGING = 0.6;
+const ORB = 0.45;
+const HALO = 1.5;
 const SCALE: Record<PromptKind, number> = { okay: 0.46, hurting: 0.6, thanked: 0.52 };
 
 const ease = (t: number) => t * t * (3 - 2 * t);
@@ -47,8 +49,8 @@ export class Prompts {
     this.halo = new Sprite(
       new SpriteMaterial({ map: tex, color: new Color(1, 0.45, 0.7), blending: AdditiveBlending, transparent: true, depthWrite: false, opacity: 0.4 }),
     );
-    this.orb.scale.setScalar(0.32);
-    this.halo.scale.setScalar(1.1);
+    this.orb.scale.setScalar(ORB);
+    this.halo.scale.setScalar(HALO);
     this.orb.visible = this.halo.visible = false;
     scene.add(this.orb, this.halo);
   }
@@ -69,9 +71,9 @@ export class Prompts {
     pr.kind = kind;
     pr.t = 0;
     pr.progress = 0;
-    // From well outside the frame, upper left and toward the viewer.
-    this.from.copy(this.source.intake).add(new Vector3(-5.5 - Math.random() * 2, 3.2 + Math.random() * 1.5, 3 + Math.random() * 3));
-    this.ctrl.copy(this.from).lerp(this.source.intake, 0.5).add(new Vector3(0.5, 1.6, -1.5));
+    // From outside the frame on the left, toward the viewer, drifting in at about source height.
+    this.from.copy(this.source.intake).add(new Vector3(-5 - Math.random() * 1.5, 0.4 + Math.random() * 0.8, 3 + Math.random() * 2.5));
+    this.ctrl.copy(this.from).lerp(this.source.intake, 0.5).add(new Vector3(0.6, 0.5, -0.6));
     this.orb.visible = this.halo.visible = true;
     this.bus.emit('promptStart', kind);
   }
@@ -111,14 +113,14 @@ export class Prompts {
       }
     } else if (pr.phase === 'charging') {
       const k = Math.min(1, pr.t / CHARGING);
-      this.orb.scale.setScalar(0.32 * (1 - k));
-      this.halo.scale.setScalar(1.1 * (1 - k * 0.7));
+      this.orb.scale.setScalar(ORB * (1 - k));
+      this.halo.scale.setScalar(HALO * (1 - k * 0.7));
       this.halo.material.opacity = 0.4 * (1 - k);
       this.boost = Math.max(this.boost, ease(k));
       if (pr.t >= CHARGING) {
         this.orb.visible = this.halo.visible = false;
-        this.orb.scale.setScalar(0.32);
-        this.halo.scale.setScalar(1.1);
+        this.orb.scale.setScalar(ORB);
+        this.halo.scale.setScalar(HALO);
         this.beginDrawing(beam);
       }
     } else if (pr.phase === 'drawing') {

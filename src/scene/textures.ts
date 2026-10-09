@@ -49,10 +49,6 @@ export function knurlTexture(): Texture {
   const [c, ctx] = canvas(64, 64);
   ctx.fillStyle = '#808080';
   ctx.fillRect(0, 0, 64, 64);
-  const g = ctx.createLinearGradient(0, 0, 64, 64);
-  g.addColorStop(0, '#fff');
-  g.addColorStop(0.5, '#000');
-  g.addColorStop(1, '#fff');
   // Two crossed sets of grooves → raised diamonds.
   ctx.globalCompositeOperation = 'multiply';
   for (const flip of [1, -1]) {

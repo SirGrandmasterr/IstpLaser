@@ -93,9 +93,16 @@ export function beamMaterial(power: number, gain: number): ShaderMaterial {
   });
 }
 
+const pointMaterials = new Set<ShaderMaterial>();
+
+/** Point sizes are in device pixels, so they follow the renderer's pixel ratio. */
+export function setPointsPixelRatio(pixelRatio: number): void {
+  for (const m of pointMaterials) m.uniforms.uScale.value = 400 * pixelRatio;
+}
+
 /** Additive point sprites with per-vertex colour (pre-multiplied intensity) and size. */
 export function pointsMaterial(map: Texture, pixelRatio: number): ShaderMaterial {
-  return new ShaderMaterial({
+  const mat = new ShaderMaterial({
     uniforms: { uMap: { value: map }, uScale: { value: 400 * pixelRatio } },
     vertexShader: /* glsl */ `
       attribute float size;
@@ -122,4 +129,6 @@ export function pointsMaterial(map: Texture, pixelRatio: number): ShaderMaterial
     depthWrite: false,
     toneMapped: false,
   });
+  pointMaterials.add(mat);
+  return mat;
 }

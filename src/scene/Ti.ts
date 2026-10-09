@@ -57,7 +57,7 @@ export class Ti implements Instrument {
   readonly pickables: Object3D[] = [];
   readonly labelAnchor = labelAnchor(TI_POS, 2.75);
   readonly view = {
-    position: TI_POS.clone().add(new Vector3(2.6, 1.6, 6.6)),
+    position: TI_POS.clone().add(new Vector3(3.2, 2.0, 8.4)),
     target: TI_POS.clone(),
   };
 

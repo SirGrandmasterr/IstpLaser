@@ -3,6 +3,8 @@ import { App } from './app';
 import { S } from './strings';
 
 function webglAvailable(): boolean {
+  // `?nowebgl` forces the fallback so it can be checked on any machine.
+  if (new URLSearchParams(location.search).has('nowebgl')) return false;
   try {
     const c = document.createElement('canvas');
     return !!(c.getContext('webgl2') || c.getContext('webgl'));

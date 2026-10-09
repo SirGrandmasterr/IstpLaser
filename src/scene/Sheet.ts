@@ -91,8 +91,10 @@ export class Sheet {
     this.glowCanvas.height = GH;
     this.markCanvas.width = MW;
     this.markCanvas.height = MH;
-    this.g = this.glowCanvas.getContext('2d')!;
-    this.m = this.markCanvas.getContext('2d')!;
+    // CPU-backed canvases: uploading a GPU-accelerated 2D canvas to WebGL forces a
+    // readback (~8 ms for both on a desktop GPU); a software canvas is a plain copy.
+    this.g = this.glowCanvas.getContext('2d', { willReadFrequently: true })!;
+    this.m = this.markCanvas.getContext('2d', { willReadFrequently: true })!;
     this.clear();
 
     this.glowTex = new CanvasTexture(this.glowCanvas);

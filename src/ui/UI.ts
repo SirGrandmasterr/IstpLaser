@@ -81,7 +81,7 @@ export class UI {
 
     // ── HUD ──
     const hud = el('section', 'hud');
-    hud.setAttribute('aria-label', 'Beam readout');
+    hud.setAttribute('aria-label', S.a11y.hud);
     const mk = (key: 'C' | 'E' | 'F', label: string, cls: string): Gauge => {
       const row = el('div', `gauge ${cls}`);
       const name = el('span', 'gauge-name', label);
@@ -107,7 +107,7 @@ export class UI {
     authTrack.append(this.authFill);
     authRow.append(authName, this.auth, authTrack);
     this.loopBadge = el('span', 'loop-badge', S.hud.loop);
-    this.loopBadge.title = 'Ti and Ni keep passing the beam back and forth: nothing reaches the world.';
+    this.loopBadge.title = S.a11y.loop;
     hud.append(authRow, this.loopBadge);
     root.append(hud);
 
@@ -136,12 +136,13 @@ export class UI {
     // ── Panel ──
     this.panel = el('aside', 'panel');
     this.panel.id = 'panel';
-    this.panel.setAttribute('aria-label', 'Controls');
+    this.panel.setAttribute('aria-label', S.a11y.panel);
     this.panelToggle = el('button', 'panel-toggle btn', S.panel.expand);
     this.panelToggle.setAttribute('aria-controls', 'panel');
     this.panelToggle.addEventListener('click', () => {
       store.ui.panelOpen = !store.ui.panelOpen;
       this.syncPanelOpen();
+      bus.emit('ui');
     });
     root.append(this.panelToggle);
 
@@ -297,6 +298,7 @@ export class UI {
     mq.addEventListener('change', () => {
       store.ui.panelOpen = !mq.matches;
       this.syncPanelOpen();
+      bus.emit('ui');
     });
     this.syncPanelOpen();
     this.sync();
@@ -317,7 +319,9 @@ export class UI {
     root.addEventListener('pointerdown', (e) => e.stopPropagation());
     const obj = new CSS2DObject(root);
     // Bottom-left corner at the anchor: plates extend up and away from the beam.
-    obj.center.set(0, 1);
+    // The source's plate hangs the other way (top-right corner at the anchor).
+    if (id === 'source') obj.center.set(1, 0);
+    else obj.center.set(0, 1);
     obj.position.set(at.x, at.y, at.z);
     scene.add(obj);
     this.labels.push({ id, root, state, obj });

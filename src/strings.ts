@@ -195,6 +195,13 @@ export const S = {
     ] as [string, string][],
   },
 
+  a11y: {
+    scene: 'Interactive 3D scene: a laser passing through four instruments onto a sheet of paper',
+    hud: 'Beam readout',
+    panel: 'Controls',
+    loop: 'Ti and Ni keep passing the beam back and forth: nothing reaches the world.',
+  },
+
   close: 'Close',
   noWebGL: {
     heading: 'This piece needs WebGL',

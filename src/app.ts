@@ -10,6 +10,7 @@ import { computeBeamState, INITIAL_BEAM_STATE, TI_LOCK } from './model/beam';
 import { Beam } from './scene/Beam';
 import { CameraRig, HOME, type View } from './scene/CameraRig';
 import { buildEnvironment } from './scene/environment';
+import { setPointsPixelRatio } from './scene/materials';
 import { Fe } from './scene/Fe';
 import { sheetToWorld } from './scene/layout';
 import { Ni } from './scene/Ni';
@@ -23,7 +24,7 @@ import { Ti, TI_RANGE } from './scene/Ti';
 import type { FrameContext, Instrument } from './scene/types';
 import { Bus, createStore, initialControls, type Mode, type Store } from './state';
 import { Story } from './story/Story';
-import type { InstrumentId, PromptKind } from './strings';
+import { S, type InstrumentId, type PromptKind } from './strings';
 import { UI } from './ui/UI';
 
 /** Torque per particle hit; the steady feed rate keeps Se near full spin. */
@@ -88,6 +89,8 @@ export class App implements Controller {
   private wasLocked = false;
   private aimPoint = new Vector3();
   private pixelRatio: number;
+  /** Resolution governor: average frame time over a window, step DPR down if slow. */
+  private perf = { acc: 0, frames: 0, cooldown: 3 };
 
   constructor(private root: HTMLElement) {
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -100,7 +103,7 @@ export class App implements Controller {
     this.renderer.toneMapping = ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.0;
     this.renderer.domElement.className = 'gl';
-    this.renderer.domElement.setAttribute('aria-label', 'Interactive 3D scene: a laser passing through four instruments onto a sheet of paper');
+    this.renderer.domElement.setAttribute('aria-label', S.a11y.scene);
     this.renderer.domElement.setAttribute('role', 'img');
     root.appendChild(this.renderer.domElement);
 
@@ -137,6 +140,7 @@ export class App implements Controller {
     this.story = new Story(this.store, this.bus, this, this.ui);
 
     this.bus.on('tiLock', () => this.audio.click());
+    this.bus.on('ui', () => this.updateInsets());
     this.bus.on('promptArrive', () => this.audio.chime());
 
     window.addEventListener('resize', this.resize);
@@ -205,8 +209,19 @@ export class App implements Controller {
     this.bus.emit('ui');
   }
 
+  /** Keep the subject centred between the info card (left) and the panel (right). */
+  private updateInsets(): void {
+    const w = this.root.clientWidth;
+    const wide = w >= 1024;
+    const card = wide && this.store.ui.focus !== null ? 372 : 0;
+    // On tablets the panel is a bottom drawer: lift the scene above it while it is open.
+    const drawer = !wide && this.store.ui.panelOpen ? (this.root.querySelector('.panel')?.clientHeight ?? 0) + 60 : 0;
+    this.rig.setInsets(card, wide && this.store.ui.panelOpen ? 332 : 0, drawer);
+  }
+
   focus(id: InstrumentId | null): void {
     this.store.ui.focus = id;
+    this.updateInsets();
     if (id) {
       const ins = this.instruments.find((i) => i.id === id);
       const view = ins?.view ?? (id === 'sheet' ? this.sheetView() : null);
@@ -275,22 +290,55 @@ export class App implements Controller {
     else this.start();
   };
 
-  private resize = (): void => {
+  private resize = (fromWindow: boolean | UIEvent = true): void => {
+    if (fromWindow !== false) {
+      this.pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+      this.renderer.setPixelRatio(this.pixelRatio);
+      this.perf.cooldown = 3;
+    }
+    setPointsPixelRatio(this.pixelRatio);
     const w = this.root.clientWidth;
     const h = this.root.clientHeight;
     this.renderer.setSize(w, h);
     this.labels.setSize(w, h);
     this.post.setSize(w, h, this.pixelRatio);
-    this.rig.resize(w, h, w >= 1024 ? 332 : 0);
+    this.rig.resize(w, h);
+    this.updateInsets();
   };
 
   private frame = (now: number): void => {
     if (!this.running) return;
     this.raf = requestAnimationFrame(this.frame);
-    const dt = Math.min(0.05, Math.max(0, (now - this.last) / 1000));
+    const raw = Math.max(0, (now - this.last) / 1000);
+    const dt = Math.min(0.05, raw);
     this.last = now;
+    this.govern(raw);
     this.update(dt);
   };
+
+  /**
+   * Hold ~60 fps on modest GPUs: if the average frame over a 2 s window is slower
+   * than ~45 fps, render at a lower pixel ratio (never below 0.75). It only steps
+   * down; a resize re-evaluates from the cap.
+   */
+  private govern(raw: number): void {
+    const p = this.perf;
+    if (raw > 0.25) return; // tab switch or stall, not a rendering cost
+    p.cooldown -= raw;
+    if (p.cooldown > 0) return;
+    p.acc += raw;
+    p.frames++;
+    if (p.acc < 2) return;
+    const avg = p.acc / p.frames;
+    p.acc = 0;
+    p.frames = 0;
+    if (avg > 1 / 45 && this.pixelRatio > 0.75) {
+      this.pixelRatio = Math.max(0.75, this.pixelRatio - 0.25);
+      this.renderer.setPixelRatio(this.pixelRatio);
+      this.resize(false);
+      p.cooldown = 1.5;
+    }
+  }
 
   private update(dt: number, render = true): void {
     this.time += dt;
