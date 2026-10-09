@@ -52,7 +52,10 @@ describe('floor output table', () => {
       expect(style.jitter).toBeGreaterThan(0.3);
       expect(style.offAxis).toBeGreaterThan(0.3);
       expect(style.sparks).toBeGreaterThan(10);
-      expect(luminance(style.color)).toBeLessThan(0.35); // dark burn
+      expect(style.color[0]).toBeGreaterThan(1.2 * style.color[1]); // ember, not pink
+      expect(luminance(style.color)).toBeLessThan(0.5);
+      expect(style.ink).toBeGreaterThan(0.6); // scorches the paper
+      expect(style.inkTone).toBeGreaterThan(0.9);
     });
   }
 
@@ -60,6 +63,8 @@ describe('floor output table', () => {
     const cold = strokeStyleFor(run(scenario(false, false, false), 6));
     const hot = strokeStyleFor(run(scenario(false, true, false), 6));
     expect(hot.sparks).toBeGreaterThan(cold.sparks);
+    expect(saturation(hot.color)).toBeGreaterThan(saturation(cold.color));
+    expect(hot.color[0]).toBeGreaterThan(2.5 * hot.color[1]); // a hot red ember
     expect(luminance(hot.color)).toBeGreaterThan(luminance(cold.color));
   });
 
@@ -74,6 +79,8 @@ describe('floor output table', () => {
       expect(style.alpha).toBeLessThan(0.5);
       expect(style.width).toBeLessThan(3);
       expect(style.coverage).toBeLessThan(0.7);
+      expect(style.ink).toBeGreaterThan(0.3); // a scratch in the paper, not light
+      expect(style.inkTone).toBeLessThan(0.1); // grey, not burnt
     });
   }
 
@@ -83,7 +90,7 @@ describe('floor output table', () => {
     expect(s.weights.puddle).toBeGreaterThan(0.95);
     const style = strokeStyleFor(s);
     expect(style.softness).toBeGreaterThan(0.9);
-    expect(style.width).toBeGreaterThan(50);
+    expect(style.width).toBeGreaterThan(30);
     expect(style.alpha).toBeLessThan(0.4);
     expect(style.color[0]).toBeGreaterThan(style.color[1]); // pinkish
   });
@@ -99,6 +106,7 @@ describe('floor output table', () => {
     expect(style.offAxis).toBeLessThan(0.02);
     expect(saturation(style.color)).toBeGreaterThan(0.6);
     expect(style.glow).toBeGreaterThan(0.8);
+    expect(style.ink).toBeLessThan(0.05);
   });
 
   it('output weights always sum to 1', () => {

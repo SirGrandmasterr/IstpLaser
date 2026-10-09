@@ -31,6 +31,10 @@ export interface StrokeStyle {
   glow: number;
   /** Seconds the nib takes to trace the path. */
   duration: number;
+  /** How much the mark darkens the paper itself (burn, scratch), 0..1. */
+  ink: number;
+  /** Ink colour: 0 = grey scratch, 1 = charcoal burn. */
+  inkTone: number;
 }
 
 type Preset = Omit<StrokeStyle, 'color'> & { color: [number, number, number] };
@@ -38,7 +42,7 @@ type Preset = Omit<StrokeStyle, 'color'> & { color: [number, number, number] };
 export const PRESETS: Record<keyof OutputWeights, Preset> = {
   // Ti off: jagged, dark, off-axis burn with sparks.
   scribble: {
-    color: [0.55, 0.16, 0.06],
+    color: [0.95, 0.26, 0.06],
     alpha: 0.95,
     width: 4,
     softness: 0.1,
@@ -48,25 +52,29 @@ export const PRESETS: Record<keyof OutputWeights, Preset> = {
     coverage: 1,
     glow: 0.35,
     duration: 2.2,
+    ink: 0.85,
+    inkTone: 1,
   },
   // Se starved: faint, dry, colourless scratch.
   groove: {
     color: [0.62, 0.62, 0.64],
-    alpha: 0.38,
-    width: 1.6,
+    alpha: 0.4,
+    width: 2.4,
     softness: 0.0,
     jitter: 0.03,
     offAxis: 0.05,
     sparks: 0,
-    coverage: 0.45,
+    coverage: 0.55,
     glow: 0.0,
     duration: 4.2,
+    ink: 0.7,
+    inkTone: 0,
   },
   // Ni flat: washed-out pink puddle of light, no edges.
   puddle: {
-    color: [1.0, 0.72, 0.84],
-    alpha: 0.2,
-    width: 70,
+    color: [1.0, 0.6, 0.8],
+    alpha: 0.38,
+    width: 36,
     softness: 1.0,
     jitter: 0.08,
     offAxis: 0.0,
@@ -74,12 +82,14 @@ export const PRESETS: Record<keyof OutputWeights, Preset> = {
     coverage: 1,
     glow: 0.4,
     duration: 3.6,
+    ink: 0,
+    inkTone: 0,
   },
   // All three: smooth, vibrant, glowing pink heart.
   heart: {
     color: [1.0, 0.24, 0.62],
     alpha: 1.0,
-    width: 7,
+    width: 12,
     softness: 0.05,
     jitter: 0.0,
     offAxis: 0.0,
@@ -87,6 +97,8 @@ export const PRESETS: Record<keyof OutputWeights, Preset> = {
     coverage: 1,
     glow: 1.0,
     duration: 3.4,
+    ink: 0,
+    inkTone: 0,
   },
 };
 
@@ -133,6 +145,8 @@ export function strokeStyleFor(beam: BeamState): StrokeStyle {
     coverage: blend(w, (p) => p.coverage),
     glow: blend(w, (p) => p.glow) * beam.E,
     duration: blend(w, (p) => p.duration),
+    ink: blend(w, (p) => p.ink),
+    inkTone: w.scribble + w.groove > 1e-6 ? w.scribble / (w.scribble + w.groove) : 0,
   };
 }
 
