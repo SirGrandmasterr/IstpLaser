@@ -139,7 +139,7 @@ export const en: Strings = {
       feed: 'Move the pointer through the scene, hold F, or press Feed.',
       compile: 'Drag the target on the page and let it rest, or press Compile.',
     },
-    line: '“I’ve been thinking about moving away for a while.”',
+    line: '“The guy that means a lot to me wrote me yesterday and we met up.”',
     questions: ['{istp}: “What did you mean?”', '{istp}: “What do you want?”', '{istp}: “What happens to us?”'],
     s1: {
       caption: '{istp} and {other} are on the sofa, close. {istp} understands what they have, knows where it is going, and feels it fully.',
