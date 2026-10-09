@@ -654,11 +654,10 @@ export class UI {
   /**
    * Lay the plates out for this frame's camera: each sits a short leader away
    * from its instrument's rim, on the side away from the beam; overlapping plates
-   * are pushed further out; a plate under any piece of UI is hidden.
+   * are pushed further out; a plate under any piece of UI is hidden. The size
+   * comes from the app (reading it here would force a layout every frame).
    */
-  placeLabels(): void {
-    const W = this.root.clientWidth;
-    const H = this.root.clientHeight;
+  placeLabels(W: number, H: number): void {
     const show = this.store.ui.labels && this.store.ui.mode !== 'intro';
     this.labelLayer.classList.toggle('hidden', !show);
     if (!show) return;

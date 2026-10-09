@@ -94,6 +94,7 @@ export class App implements Controller {
   private aimPoint = new Vector3();
   private pixelRatio: number;
   private sized = false;
+  private size = { w: 0, h: 0 };
   /** Resolution governor: average frame time over a window, step DPR down if slow. */
   private perf = { acc: 0, frames: 0, cooldown: 3 };
 
@@ -310,6 +311,7 @@ export class App implements Controller {
     // zero (and drawing into them) floods the console. Wait for a real size.
     this.sized = w >= 2 && h >= 2;
     if (!this.sized) return;
+    this.size = { w, h };
     if (fromWindow !== false) {
       this.pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
       this.renderer.setPixelRatio(this.pixelRatio);
@@ -448,6 +450,6 @@ export class App implements Controller {
 
     if (!render || !this.sized) return;
     this.post.render(this.time, store.ui.reducedMotion);
-    this.ui.placeLabels();
+    this.ui.placeLabels(this.size.w, this.size.h);
   }
 }
